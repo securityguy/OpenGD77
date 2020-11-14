@@ -767,11 +767,11 @@ RSSI读数与S表并未经过精确校准，在不同电台上，准确度会有
 
 显示当前电池电压。
 
-![](media/battery.png)
+![](media/battery-level.png)
 
 按压 **下** 方向键可以显示电池使用情况表。横坐标每一格代表十分钟。
 
-![](media/battery-graph.png)
+![](media/battery-graph-fill.png)
 
 ### 回溯界面（Last Heard）
 
