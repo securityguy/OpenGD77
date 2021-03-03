@@ -385,7 +385,7 @@ void mainTask(void *data)
 			// EVENT_*_CHANGED can be cleared later, so check this now as hasEvent has to be set anyway.
 			keyOrButtonChanged = ((key_event != NO_EVENT) || (button_event != NO_EVENT) || (rotary_event != NO_EVENT));
 
-			if (batteryVoltageHasChanged == true)
+			if (headerRowIsDirty == true)
 			{
 				int currentMenu = menuSystemGetCurrentMenuNumber();
 
@@ -400,7 +400,7 @@ void mainTask(void *data)
 					ucRenderRows(0, 2);
 				}
 
-				batteryVoltageHasChanged = false;
+				headerRowIsDirty = false;
 			}
 
 			if (keypadLocked || PTTLocked)
@@ -803,7 +803,7 @@ void mainTask(void *data)
 #else
 				if ((menuSystemGetCurrentMenuNumber() != UI_TX_SCREEN) &&
 #endif
-				(battery_voltage < (CUTOFF_VOLTAGE_LOWER_HYST + LOW_BATTERY_WARNING_VOLTAGE_DIFFERENTIAL))	&&
+				(batteryVoltage < (CUTOFF_VOLTAGE_LOWER_HYST + LOW_BATTERY_WARNING_VOLTAGE_DIFFERENTIAL))	&&
 				(fw_millis() > lowbatteryTimer))
 			{
 
@@ -824,15 +824,15 @@ void mainTask(void *data)
 			}
 
 #if defined(PLATFORM_RD5R)
-			if ((battery_voltage < CUTOFF_VOLTAGE_LOWER_HYST)
+			if ((batteryVoltage < CUTOFF_VOLTAGE_LOWER_HYST)
 					&& (menuSystemGetCurrentMenuNumber() != UI_POWER_OFF))
 #else
 			if (((GPIO_PinRead(GPIO_Power_Switch, Pin_Power_Switch) != 0)
-					|| (battery_voltage < CUTOFF_VOLTAGE_LOWER_HYST))
+					|| (batteryVoltage < CUTOFF_VOLTAGE_LOWER_HYST))
 					&& (menuSystemGetCurrentMenuNumber() != UI_POWER_OFF))
 #endif
 			{
-				if (battery_voltage < CUTOFF_VOLTAGE_LOWER_HYST)
+				if (batteryVoltage < CUTOFF_VOLTAGE_LOWER_HYST)
 				{
 					showLowBattery();
 #if defined(PLATFORM_RD5R)

@@ -375,31 +375,46 @@ void soundTickMelody(void)
 
 static void soundBeepTask(void *data)
 {
+	const int WAIT_TIMEOUT_COUNT = 10;
 	uint8_t tmp_val;
 	int beep_idx = 0;
 	bool beep = false;
 	uint8_t spi_sound[32];
+	int waitTimeout;
 
     while (1U)
     {
-    	taskENTER_CRITICAL();
-    	uint32_t tmp_timer_beeptask = timer_beeptask;
-    	taskEXIT_CRITICAL();
-    	if (tmp_timer_beeptask == 0)
+    	if (timer_beeptask == 0)
     	{
-        	taskENTER_CRITICAL();
+
         	timer_beeptask = 10;
+        	taskENTER_CRITICAL();
         	alive_beeptask = true;
+        	taskEXIT_CRITICAL();
 
     		if (sine_beep_duration > 0)
     		{
     			if (!beep)
     			{
-    				SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x02); // SET
+    				waitTimeout = WAIT_TIMEOUT_COUNT;
+    				NVIC_DisableIRQ(PORTC_IRQn);
+    				// Set C6000 audio path to "OpenMusic" for beep
+    				while ((SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x02) == -1) &&  ((waitTimeout--) >> 0))
+    				{
+    					vTaskDelay(0);
+    				}
+    				NVIC_EnableIRQ(PORTC_IRQn);
     				beep = true;
     			}
 
-    			SPI0ReadPageRegByte(0x04, 0x88, &tmp_val);
+    			waitTimeout = WAIT_TIMEOUT_COUNT;
+    			NVIC_DisableIRQ(PORTC_IRQn);
+    			while ((SPI0ReadPageRegByte(0x04, 0x88, &tmp_val) == -1) &&  ((waitTimeout--) >> 0))
+				{
+					vTaskDelay(0);
+				}
+				NVIC_EnableIRQ(PORTC_IRQn);
+
     			if ( !(tmp_val & 1))
     			{
     				for (int i = 0; i < 16; i++)
@@ -416,7 +431,13 @@ static void soundBeepTask(void *data)
     						}
     					}
     				}
-    				SPI0WritePageRegByteArray(0x03, 0x00, spi_sound, 0x20);
+    				NVIC_DisableIRQ(PORTC_IRQn);
+    				waitTimeout = WAIT_TIMEOUT_COUNT;
+    				while ((SPI0WritePageRegByteArray(0x03, 0x00, spi_sound, 0x20) == -1) &&  ((waitTimeout--) >> 0))
+    				{
+    					vTaskDelay(0);
+    				}
+    				NVIC_EnableIRQ(PORTC_IRQn);
     			}
 
     			sine_beep_duration--;
@@ -425,11 +446,17 @@ static void soundBeepTask(void *data)
     		{
     			if (beep)
     			{
-    				SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x00); // CLEAR
+    				waitTimeout = WAIT_TIMEOUT_COUNT;
+    				NVIC_DisableIRQ(PORTC_IRQn);
+    				while ((SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x00) == -1) &&  ((waitTimeout--) >> 0))
+    				{
+    					vTaskDelay(0);
+    				}
+    				NVIC_EnableIRQ(PORTC_IRQn);
     				beep = false;
     			}
     		}
-    		taskEXIT_CRITICAL();
+
     	}
 
 		vTaskDelay(0);

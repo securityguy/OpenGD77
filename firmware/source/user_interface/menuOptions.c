@@ -26,8 +26,7 @@ static void handleEvent(uiEvent_t *ev);
 
 static menuStatus_t menuOptionsExitCode = MENU_STATUS_SUCCESS;
 static bool	doFactoryReset;
-enum OPTIONS_MENU_LIST { OPTIONS_MENU_FACTORY_RESET = 0, OPTIONS_MENU_USE_CALIBRATION,
-							OPTIONS_MENU_TX_FREQ_LIMITS,
+enum OPTIONS_MENU_LIST {  	OPTIONS_MENU_TX_FREQ_LIMITS = 0U,
 							OPTIONS_MENU_KEYPAD_TIMER_LONG, OPTIONS_MENU_KEYPAD_TIMER_REPEAT, OPTIONS_MENU_DMR_MONITOR_CAPTURE_TIMEOUT,
 							OPTIONS_MENU_SCAN_DELAY, OPTIONS_MENU_SCAN_MODE,
 							OPTIONS_MENU_SQUELCH_DEFAULT_VHF, OPTIONS_MENU_SQUELCH_DEFAULT_220MHz, OPTIONS_MENU_SQUELCH_DEFAULT_UHF,
@@ -87,14 +86,6 @@ static void updateScreen(bool isFirstRun)
 
 		switch(mNum)
 		{
-			case OPTIONS_MENU_FACTORY_RESET:
-				leftSide = (char * const *)&currentLanguage->factory_reset;
-				rightSideConst = (char * const *)(doFactoryReset ? &currentLanguage->yes : &currentLanguage->no);
-				break;
-			case OPTIONS_MENU_USE_CALIBRATION:
-				leftSide = (char * const *)&currentLanguage->calibration;
-				rightSideConst = (char * const *)(nonVolatileSettings.useCalibration ? &currentLanguage->on : &currentLanguage->off);
-				break;
 			case OPTIONS_MENU_TX_FREQ_LIMITS:// Tx Freq limits
 				leftSide = (char * const *)&currentLanguage->band_limits;
 				rightSideConst = (char * const *)(nonVolatileSettings.txFreqLimited ? &currentLanguage->on : &currentLanguage->off);
@@ -226,12 +217,6 @@ static void handleEvent(uiEvent_t *ev)
 		isDirty = true;
 		switch(gMenusCurrentItemIndex)
 		{
-			case OPTIONS_MENU_FACTORY_RESET:
-				doFactoryReset = true;
-				break;
-			case OPTIONS_MENU_USE_CALIBRATION:
-				settingsSet(nonVolatileSettings.useCalibration, true);
-				break;
 			case OPTIONS_MENU_TX_FREQ_LIMITS:
 				settingsSet(nonVolatileSettings.txFreqLimited, true);
 				break;
@@ -311,12 +296,6 @@ static void handleEvent(uiEvent_t *ev)
 		isDirty = true;
 		switch(gMenusCurrentItemIndex)
 		{
-			case OPTIONS_MENU_FACTORY_RESET:
-				doFactoryReset = false;
-				break;
-			case OPTIONS_MENU_USE_CALIBRATION:
-				settingsSet(nonVolatileSettings.useCalibration, false);
-				break;
 			case OPTIONS_MENU_TX_FREQ_LIMITS:
 				settingsSet(nonVolatileSettings.txFreqLimited, false);
 				break;

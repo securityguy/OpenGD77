@@ -79,6 +79,7 @@ volatile bool hotspotDMRRxFrameBufferAvailable = false;
 
 volatile uint8_t DMR_frame_buffer[DMR_FRAME_BUFFER_SIZE];
 volatile uint8_t deferredUpdateBuffer[DMR_FRAME_BUFFER_SIZE];
+volatile bool deferredBufferAvailable = false;
 
 
 static volatile int int_timeout;
@@ -335,15 +336,9 @@ static inline bool checkTimeSlotFilter(void)
 
 bool checkTalkGroupFilter(void)
 {
-
-	if (((trxTalkGroupOrPcId >> 24) == PC_CALL_FLAG))
+	if (((receivedTgOrPcId >> 24) == PC_CALL_FLAG) && (settingsUsbMode != USB_MODE_HOTSPOT))
 	{
-		return true;
-	}
-
-	if ((nonVolatileSettings.privateCalls == 0) && ((receivedTgOrPcId >> 24) == PC_CALL_FLAG) && (settingsUsbMode != USB_MODE_HOTSPOT))
-	{
-		return false;
+		return ((nonVolatileSettings.privateCalls != 0) || ((trxTalkGroupOrPcId >> 24) == PC_CALL_FLAG));
 	}
 
 	switch(nonVolatileSettings.dmrDestinationFilter)
@@ -366,9 +361,12 @@ bool checkTalkGroupFilter(void)
 				return false;
 			}
 			break;
+
 		default:
-			return true;
+			break;
 	}
+
+	return true;
 }
 
 bool checkColourCodeFilter(void)
@@ -1082,6 +1080,7 @@ inline static void HRC6000TimeslotInterruptHandler(void)
                 	}
 
 					SPI1WritePageRegByteArray(0x03, 0x00, (uint8_t*)deferredUpdateBuffer, 27);// send the audio bytes to the hardware
+					deferredBufferAvailable = false;
                 }
                 else
                 {
@@ -1094,6 +1093,7 @@ inline static void HRC6000TimeslotInterruptHandler(void)
         			hotspotDMRTxFrameBufferEmpty = true;// we have finished with the current frame data from the hotspot
 
                 }
+
 			}
 			else
 			{
@@ -1547,9 +1547,10 @@ void tick_HR_C6000(void)
 				// Once there are 6 buffers available they can be encoded into one DMR frame
 				// The will happen  prior to the data being needed in the TS ISR, so that by the time tick_codec_encode encodes complete,
 				// the data is ready to be used in the TS ISR
-				if (wavbuffer_count >= 6)
+				if ((wavbuffer_count >= 6) && (deferredBufferAvailable == false))
 				{
 					codecEncode((uint8_t *)deferredUpdateBuffer, 3);
+					deferredBufferAvailable = true;
 				}
 			}
 		}

@@ -37,6 +37,8 @@ For the latest information and discussions, please refer to the development and 
         * [Filter](#filter)
         * [VFO to New Channel](#vfo-to-new-channel)
         * [Tone Scan for CTCSS or DCS tone in FM](#tone-scan-for-ctcss-or-dcs-tone-in-fm)
+	* [Dual Watch](#dual-watch)
+	* [Binding Transmit and Receive frequencies](#binding-transmit-and-receive-frequencies)
     * [DMR specific functionality (VFO and Channel screens)](#dmr-specific-functionality-vfo-and-channel-screens)
       * [Timeslot selection](#timeslot-selection)
       * [DMR ID callsign and name display](#dmr-id-callsign-and-name-display)
@@ -77,7 +79,6 @@ For the latest information and discussions, please refer to the development and 
     * [Last Heard](#last-heard)
     * [Firmware Info](#firmware-info)
     * [Options](#options)
-      * [Fact Reset](#fact-reset)
       * [Band Limits](#band-limits)
       * [Key long](#key-long)
       * [Key rpt](#key-rpt)
@@ -91,6 +92,7 @@ For the latest information and discussions, please refer to the development and 
       * [Hotspot](#hotspot)
       * [TA Tx](#ta-tx)
       * [Allow PC](#allow-pc)
+      * [Eco Level](#eco-level)
     * [Display Options](#display-options)
       * [Brightness](#brightness)
       * [Min Bright](#min-bright)
@@ -100,7 +102,8 @@ For the latest information and discussions, please refer to the development and 
       * [Colour mode](#colour-mode)
       * [Order](#order)
       * [Contact](#contact)
-	  * [Battery units](#battery-units)
+      * [Battery units](#battery-units)
+      * [Info](#info)
     * [Sound Options](#sound-options)
       * [Timeout beep](#timeout-beep)
       * [Beep volume](#beep-volume)
@@ -128,6 +131,8 @@ For the latest information and discussions, please refer to the development and 
 	  * [Channel Power](#ch-power)
       * [Accepting and saving the changes to the channel](#accepting-and-saving-the-changes-to-the-channel)
     * [Credits Screen](#credits-screen)
+	
+  * [User definable number key functionality QuickKeys](#user-definable-number-key-functionality-quickkeys) 	
   * [Making and receiving DMR Private Calls](#making-and-receiving-dmr-private-calls)
     * [To make a Private Call](#to-make-a-private-call)
     * [To Receive a Private Call](#to-receive-a-private-call)
@@ -174,7 +179,6 @@ This firmware is specifically designed for **Amateur Radio** use, and has featur
 
 - **The firmware is still under development and there are some key areas of functionality which are supported in the official firmware but not in this firmware**
 - SMS message Tx and Rx **are not currently supported**, but may possibly be supported in the future.
-- Dual Watch is not supported, and **may never be supported**, because this functionality can almost be replicated using the Channel or Zone scan feature
 - Scan Lists **are not supported** because Channel or Zone scan feature provides almost identical functionality.
 - Privacy and Encryption **will not** be supported, as its illegal for Amateur Radio use, developers in some countries (*e.g.* Australia) are now legally required to put a back door access into any encryption systems at the request of the government, hence effectively making it illegal or impossible to develop systems that contain encryption.
 - Battery saving features have **not been developed**, hence this firmware causes much higher battery usage in Rx when there is no signal. Some battery saving features may be developed in the future, however some advanced features like the S meter will not be possible if battery saving is implemented.
@@ -218,7 +222,7 @@ Installation of the firmware is undertaken at the owners own risk, but the offic
 There are two mechanisms that can be used when connecting your computer to the radio.
 
 1. Firmware upgrade.
- - Get the radio into dfu mode by:
+ - Get the radio into device firmware update mode (aka DFU) mode by:
    * Holding down the two buttons indicated below (**S1**,**Fn**) and turning the radio on.
    * The LCD screen will be blank.
    * Connection will use the HID codes and a driver is not required to be installed.
@@ -253,7 +257,7 @@ There are two mechanisms that can be used when connecting your computer to the r
 
 The official firmware for each of these radios use slightly different codeplug formats.
 
-Users radios other than the GD-77 will need to convert their codeplug using the tools written by Colin G4EML (see <http://www.gb3gf.co.uk/downloads.html>).
+Users of radios other than the GD-77 will need to convert their codeplug using the tools written by Colin G4EML (see <http://www.gb3gf.co.uk/downloads.html>).
 
 Specifically export their existing codeplug to CSV format, and then import those CSV files into the OpenGD77 version of Colin's tools.
 
@@ -268,11 +272,11 @@ Not all the supported radios have the same number of buttons, or the same screen
 
 Also, not all radios support all the functionalities.
 
-- The Radioddity GD-77 (aka *TYT MD-760*), has 2 buttons below the PTT. The **black** button is technically known as **SK1**, and the **blue** button is know as **SK2** and is also referred to, in this manual, as the **Function** button. This radio also has an **Orange** button at the top.
+- The Radioddity GD-77 (aka *TYT MD-760*), has 2 buttons below the PTT. The **black** button is technically known as **SK1**, and the **blue** button is known as **SK2** and is also referred to, in this manual, as the **Function** button. This radio also has an **Orange** button at the top.
 - The Baofeng RD-5R / DM-5R USB hardware will not support USB connections while the radio is transmitting, so **it is not possible** to use Hotspot mode on this radio.
 - The Baofeng RD-5R / DM-5R does not have left or right arrow buttons, so the **A/B** button is used to replace the left arrow and the **Band** button is used to replace the right arrow.
 - The Baofeng RD-5R / DM-5R does not have the **Orange** button, and its functionality has been simulated by using a **Long press** on the orange coloured **MR/VFO** button.
-- The Baofeng RD-5R / DM-5R has 2 buttons on the side, but their position is different from the GD-77 and DM-1801. The button above the PTT is used as the **Black** button on the side of the GD-77, also know as button **SK1**. The button below the PTT is used as the **Function** button, also known as **SK2**.
+- The Baofeng RD-5R / DM-5R has 2 buttons on the side, but their position is different from the GD-77 and DM-1801. The button above the PTT is used as the **Black** button on the side of the GD-77, also known as button **SK1**. The button below the PTT is used as the **Function** button, also known as **SK2**.
 - The Radioddity GD-77S does not have a keypad or screen, hence its operation is completely different from the other supported radios that have a screen (*see the appendix on [GD-77S operation](#gd-77s-operation)*).
 - The Baofeng DM-1801 / DM-860 has a dedicated **MR/VFO** button, which is used to change between Channel and VFO mode, in place of pressing the **Red** menu key.
 - The Baofeng DM-1801 / DM-860 has a dedicated **A/B** button, which is used to change between VFO A and B, in place of pressing the quick menu via the **Orange** button on the top of the radio.
@@ -336,7 +340,7 @@ By default, all Channels are set to use the **Master** power, however this setti
 
 When a Channel has a custom power setting, the power will be displayed in a **Bold font**.
 
-Increasing and descreasing the power on a Channel with a custom power setting will temporarily override the power on the Channel, but this change is not saved to the codeplug. So, changing channels will result in the temporary override being lost.
+Increasing and decreasing the power on a Channel with a custom power setting will temporarily override the power on the Channel, but this change is not saved to the codeplug. So, changing channels will result in the temporary override being lost.
 
 To make a **permanent** change to a Channel custom power value, you must open the [**Channel Details**](#channel-details) screen, and then exit by pressing **Function** + **Green**.
 
@@ -358,7 +362,7 @@ To access this power setting, select the **5W** power setting, then press and ho
 - The power output will only be correct after the operator has calibrated their own radio, as these radios **do not seem to have very accurate power calibration applied in the factory**.
 - Power output on settings below **1W** is **not** very accurate, because the calibration only holds data points for the **1W** and **5W** power values.
 - Between **1W** and **5W**, the PA FET output power is approximately directly proportional to the PA drive level, hence the interpolated drive levels result in *reasonably accurate* power levels for **2W**, **3W** and **4W**.
-- However, below **1W** the PA FET ouput power **is not directly proportional** to the PA drive level, and **conserably varies** between different radios. Hence the power accuracy below **1W** is at best around **80% accurate**.
+- However, below **1W** the PA FET power output **is not directly proportional** to the PA drive level, and **varies  considerably** between different radios. Hence the power accuracy below **1W** is at best around **80% accurate**.
 - Also, the PA FET minimum operational power threshold is very close to (or sometimes even above **50mW**), so operating at this power level **can produce unwanted spurious emissions**.
 - Please confirm your power output and spectral emissions **before** using the **50mW** setting anywhere it may cause interference.
 
@@ -526,6 +530,18 @@ Cancelling the scan restores the Rx CTCSS / DCS to its value prior to the scan b
 
 If a tone is detected; both the Rx and Tx CTCSS / DCS values are set to the tone which was detected by the scan.
 
+##### 	Dual Watch<!-- linebreak -->
+When this option is enabled, the transceiver monitors both VFO A and VFO B receive frequencies, by switching constantly between the two VFOs, as if it is scanning a zone containing 2 channels.
+
+The display shows the receive frequency of VFO A and VFO B, rather than the receive and transmit frequencies of a VFO.
+
+When a signal is received on either VFO A or VFO B, the Dual Watch stops on that VFO and receives on that VFO until the signal ends.
+
+##### 	Binding Transmit and Receive frequencies<!-- linebreak -->
+
+This option controls whether the transmit and receive frequencies are bound together, so that changes to the receive frequency, e.g step up or down, are also applied to the transmit frequency.
+The default configuration is "On" , and the transmit frequency is bound to the receive frequency, but if this option is changed to "Off", then the receive frequency can be changed independantly of the tramsmit frequency.
+
 
 <div style="page-break-after: always; break-after: page;"></div>
 
@@ -637,13 +653,13 @@ Private calls can also be selected in this manner.
 
 This DMR ID will be used for transmission **until** the radio is rebooted or you enter another DMR ID via the same screen.
 
-To make the change permanent, so that its written back to the codeplug Press **Function** + **Green** instead of **Green** to confirm the number.
+To make the change permanent, so that it is written to the codeplug memory, Press **Function** + **Green** instead of **Green** to confirm the number.
 
 ### FM specific functionality (*VFO and Channel screens*)
 
 #### FM and FM Narrow<!-- linebreak -->
 
-For FM with **25kHz bandwidth** with the text “**FM**” is displayed in the top left of the screen. For narrow band with **12.5kHz bandwidth** the text “**FMN**” is displayed.
+For FM with **25kHz bandwidth** with the text “**FM**” is displayed in the top left of the screen. For narrow band width **12.5kHz bandwidth** the text “**FMN**” is displayed.
 
 #### CTCSS Tone or DCS Code<!-- linebreak -->
 
@@ -716,7 +732,7 @@ When entering a frequency:
 
 #### To adjust the TX frequency, independent of the RX frequency<!-- linebreak -->
 
-- Press the and hold **Function** button on the side of the radio, and then the **Down** arrow.
+- Press and hold **Function** button on the side of the radio, and then the **Down** arrow.
 
 This will change the currently selected frequency to the TX frequency, and the arrow will move to the left of the “**T**” instead of the “**R**”
 
@@ -808,7 +824,7 @@ When not actively scanning, pressing the **Up** or **Down** arrows performs the 
 
 - Press the **Left** arrow key to reverse the scan direction.
 - Press the **Up** arrow to skip over the current frequency and continue the scan.
-- Press the **Right** arrow arrow to mark the current frequency as a *nuisance* frequency, which will be omitted by the scan.
+- Press the **Right** arrow to mark the current frequency as a *nuisance* frequency, which will be omitted by the scan.
 
 Pressing any other button will stop the scan
 
@@ -910,15 +926,25 @@ Note that you can quickly cycle through zones by holding the **Blue** button and
 
 Displays a signal strength indicator showing the numerical **RSSI** value in **dBm**, along with an *S-Unit bar graph*.
 
+*Notes:* 
+
+1. The S meter scale used, has been suggested by Jason VK7ZJA and does not confirm to the ITU standard for dBm per S unit, for values below S9.
+The ITU standard for S9 is -93dBm, which is what the RSSI screen uses.
+However, the ITU standard uses 6dBm intervals per S unit, which results in the S1 value, being a long way below the noise floor on any of the supported radios.
+So the firmware uses 4dBm per S unit. 
+It is common practice for Ham radios not not follow the ITU S meter units precisely, with common values of dBm per S unit being between between 4dBm and 6dBm per S unit.
+
+2. Because of the small display on the supported radios, the scale of the RSSI bar is different below S9 to above S9, to provide greater resolution and readability of values from S0 to S9. 
+The physical scale from S0 to S9 is twice the size of the value above S9.
+
+3. The maximum RSSI value when the radio is configured to receive DMR is approximately S9+10dB, however on FM the maximum RSSI value is approximately S9+60dB.
+So the scale above S9 changes depending on the radio mode, so the full scale is the maximum signal strength that can be recieved in that mode.
+
+4. The RSSI value from the hardware (AT1846S RF chip), is not calibrated and varies by around +/- 1.5dBm between individual radios.
+
 ![RSSI screen](media/rssi.png)
 
-*Notes:*
 
-- Both RSSI and S-meter are not calibrated and will vary somewhat between different radios in their accuracy.
-
-DMR signals by their nature, because they are pulse transmissions, **will not** give accurate RSSI values.
-
-*The number in the top right of the display is for debugging purposes and is the number reported by the receiver hardware.*
 
 ### Radio Info
 
@@ -968,24 +994,18 @@ This menu controls various settings specific to the firmware
 
 ![options menu](media/options-screen.png)
 
-#### Fact Reset<!-- linebreak -->
-
-Resets the radio to **default settings**, and reads the CPS VFO A values from the codeplug into the VFO screen. Power cycle the radio to apply.
-
-**The radio can also be set to the default settings by holding the Blue (Function) key while turning on the radio.**
-
 #### Band Limits<!-- linebreak -->
 
 This setting controls the frequency band ranges inside which the radio can transmit.
 
 Options are 
 
-- ***OFF***: where tranmission is **not limited** to band ranges.
+- ***OFF***: where transmission is **not limited** to band ranges.
 - ***ON***: where the **band limits for the USA** are applied (**this is the Default setting**):
   - 144MHz - 148MHz,
   - 222MHz - 225MHz,
   - 420MHz - 450MHz.
-- ***CPS***: where the VHF and UHF limits set **in the CPS** are used. If the CPS band limts do not contain valid values, for example the UHF frequency band range is **less than** or **intersects** with the VHF band range, the radio will use the **Default** settings (as above)
+- ***CPS***: where the VHF and UHF limits set **in the CPS** are used. If the CPS band limits do not contain valid values, for example the UHF frequency band range is **less than** or **intersects** with the VHF band range, the radio will use the **Default** settings (as above)
 
 ![CPS band limit window](media/cps-band-limits.png)
 
@@ -999,7 +1019,7 @@ The hardware band limits are:
 
 These limits are because the *AT1846S RF* chip **will not operate reliably** outside this range, and this range is actually beyond the published specification of the AT1846S, which is technically 134MHz - 174MHz, 200MHz - 260MHz, 400MHz - 520MHz.
 
-It should also be noted that the radio does **not** have a PA or Rx section for the 200MHz band, **so operating in this range has high suprious emissions, usually on the 1<sup>st</sup> harmonic of the frequency in use**.
+It should also be noted that the radio does **not** have a PA or Rx section for the 200MHz band, **so operating in this range has high spurious emissions, usually on the 1<sup>st</sup> harmonic of the frequency in use**.
 
 
 #### Key long<!-- linebreak -->
@@ -1032,7 +1052,7 @@ This setting controls how the receiver stops when there is a signal during scan 
 
 - **Hold**: continuously tunes in to a channel when a signal is received.
 - **Pause**: tunes in to that signal for a specified duration (*Scan Delay*) and then resumes scan.
-- **Stop**: the scan mode will exits on the first valid received signal.
+- **Stop**: the scan mode will exit on the first valid received signal.
 
 #### Squelch UHF<!-- linebreak -->
 
@@ -1089,6 +1109,27 @@ The text of **Line1** and **Line2** from the "**Boot Item**" CPS screen is used 
 Allows **Private Calls** to be received.
 
 
+#### Eco Level<!-- linebreak -->
+
+Controls the power saving when the radio is idle, (when the radio is receiving but there is no signal.)
+
+Level 0: No power saving measures are used. 
+
+For other values refer to the table below
+
+Level | Rx duty cycle | Entry delay (secs) | Average latency (ms) | Current (mA)
+----- | ------------- | ------------------ | -------------------  | ------------
+0  | N/A | N/A | N/A | 62
+1  | 1:1 | 10 | 320  | 40
+2  | 1:2 | 8 | 420  | 33
+3  | 1:4 | 6 | 600  | 27
+4  | 1:8 | 2 | 900  | 23
+
+
+Current was measured on a GD-77 with a full battery, with in Rx with no signal, and no backlight.
+
+
+
 <div style="page-break-after: always; break-after: page;"></div>
 
 ### Display Options
@@ -1105,7 +1146,7 @@ The default backlight brightness (**default 100%**).
 
 #### Min Bright<!-- linebreak -->
 
-Controls the display backlight brightness in its "*Off*" state.
+Controls the display backlight brightness in it’s "*Off*" state.
 
 The default value is **0%**, so that when the display is in its **Off** state, there will be no backlight.
 
@@ -1171,6 +1212,16 @@ Options are
 - **%**:  Shows the battery percentage *e.g.* **0%** to **100%**.
 - **V**:  Shows the battery voltage *e.g.* **8.1V**.
 
+
+#### Info<!-- linebreak -->
+Controls whether the Timeslot or Power level is displayed in bold to indicate that an override is currently applied to that setting
+
+Options are
+
+- **Off**:  Neither the TS or Power is shown in bold to indicate an override
+- **TS**:   The TS is shown as cTS1 or CTS2 if the TS has been overridden by either pressing the * (Star) key or by a TS override on a Contact / TG
+- **Pwr**:  The Power is shown in bold if a channel specific power setting is currently being applied which overrides the master power setting
+- **Both**: Equivalent to both the TS and Pwr options as described above.
 
 <div style="page-break-after: always; break-after: page;"></div>
 
@@ -1241,15 +1292,15 @@ This setting controls the **audible feedback** to button and key presses etc and
 	
     When changing power, the **higher pitch** beep is emitted when the **lowest power level is selected**.
 
-- In addition to the beep, the firmware also supports voice prompts **if an voice prompt file is loaded via the CPS**.
+- In addition to the beep, the firmware also supports voice prompts **if a voice prompt file is loaded via the CPS**.
   There are 3 levels of voice prompt,
   - "**Voice**",
   - "**Voice L2**" and
   - "**Voice L3**", in the latter two cases the L indicates the "Level"
 
-  The voice level is used to control whether the voice prompt is played immediatly, or whether the operator needs to press button SK1 to play the which describes the last change made to the radio.
+  The voice level is used to control whether the voice prompt is played immediately, or whether the operator needs to press button SK1 to play the prompt which describes the last change made to the radio.
 
-  For example. On **Voice** mode, which is **level 1**, the things which are voiced immediatly voiced are:
+  For example. On **Voice** mode, which is **level 1**, the things which are voiced immediately voiced are:
 
   - Number key, and # key buttons being pressed.
   - Changes to squelch level.
@@ -1258,7 +1309,7 @@ This setting controls the **audible feedback** to button and key presses etc and
 
   Voice **level 2** has almost identical operation to Voice **level 1**, except that if a key or button is pressed while a prompt is already being played, **there will be a slight reduction in the verbosity of the next response**.
 
-  Voice **level 3**, all items voice **immediatly**, including:
+  Voice **level 3**, all items voice **immediately**, including:
   - Channel names are announced as you arrow through channels in channel mode;
   - Talkgroup names are announced as you arrow through them in DMR mode;
 
@@ -1305,7 +1356,7 @@ For both Tx and Rx CTCSS / DCS.
 
 #### Bandwidth<!-- linebreak -->
 
-Sets the *Rx and Tx bandwidth* in **FM** mode to either **25Khz** or *12.5Khz**.
+Sets the *Rx and Tx bandwidth* in **FM** mode to either **25Khz** or **12.5Khz**.
 
 #### RX<!-- linebreak -->
 
@@ -1364,6 +1415,28 @@ Details of the creators of firmware.
 
 If other developers contribute to the development effort they will be added to this screen, and the addition details will be viewed by pressing the **Down** arrow to scroll the text.
 
+
+<div style="page-break-after: always; break-after: page;"></div>
+
+
+## User definable number key functionality QuickKeys
+
+The number keys  0 - 9 can be defined by the operator to perform many functions available in the menu system, including opening specific menu screens, or adjusting individual settings e.g. increase display backlight brightness
+
+To define a QuickKey navigate to a Menu, or menu screen, and press SK2 + NUMBER (0 to 9). 
+If the radio is displaying the main Menu the key will be assigned to open the screen for the currently selected menu item.
+If the radio is on a screen like Last Heard, then the key will be assigned to open that screen.
+If the radio is on a screen with sub-options e.g. the Display Options screen, then the operator will be prompted to specify whether the QuickKey should action the Left or Right arrow or the Green menu / OK.
+If Left or Right is selected e.g. to increase or decrease a value, this will be the function of that QuickKey e.g. Increase display backlight brightness.
+Selecting OK, will assign the QuickKey to open the menu to the selected option, but will not change it.
+
+After a QuickKey has been saved, the radio will beep to acknowledge the action has been saved.
+
+To play a QuickKey, the radio must be on the Channel or VFO screen, and is actioned by pressing the same key combination SK2 + Number
+
+A QuickKey can be cleared by doing a Long press of SK2 + NUMBER (0 - 9). The radio will beep with descending followed by ascending beep to confirm the QuickKey combination has been cleared.
+
+If a QuickKey has been asssigned to a function, it can't be re-assigned to another function until it has been cleared.
 
 <div style="page-break-after: always; break-after: page;"></div>
 
@@ -1685,7 +1758,7 @@ As the firmware supports **Talker Alias**, you might find this sufficient. The f
 
 #### Boot tune<!-- linebreak -->
 
-The tones are in pitch, delay pairs. So **38,6** means play **tone 38** (*932Hz F#*) for **6 time periods**.
+The tones are in pitch, delay pairs. So **38,6** means play **tone 38** (*932Hz A#*) for **6 time periods**.
 
 ##### Boot Tune in Morse code<!-- linebreak -->
 

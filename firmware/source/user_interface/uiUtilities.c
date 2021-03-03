@@ -1048,7 +1048,7 @@ static void displayContactTextInfos(char *text, size_t maxLen, bool isFromTalker
 		if ((nonVolatileSettings.splitContact == SPLIT_CONTACT_SINGLE_LINE_ONLY) ||
 				((nonVolatileSettings.splitContact == SPLIT_CONTACT_AUTO) && (strlen(text) <= 16)))
 		{
-			memcpy(buffer, text, 17);
+			memcpy(buffer, text, 16);
 			buffer[16] = 0;
 
 			ucPrintCentered(CONTACT_FIRST_LINE_Y_POS, chomp(buffer), FONT_SIZE_3);
@@ -1103,7 +1103,7 @@ static void displayContactTextInfos(char *text, size_t maxLen, bool isFromTalker
 	}
 	else
 	{
-		memcpy(buffer, text, 17);
+		memcpy(buffer, text, 16);
 		buffer[16] = 0;
 
 #if defined(PLATFORM_RD5R)

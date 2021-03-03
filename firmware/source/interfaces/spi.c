@@ -1,5 +1,6 @@
 /*
- * Copyright (C)2019 Kai Ludwig, DG4KLU
+ * Copyright (C)2019 Kai Ludwig, DG4KLU and Roger Clark VK3KYY / G4KYF
+ *
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,16 +17,14 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hr-c6000_spi.h>
-#include "fsl_port.h"
+#include "drivers/fsl_port.h"
+#include "interfaces/hr-c6000_spi.h"
 
-__attribute__((section(".data.$RAM2"))) uint8_t spi_masterReceiveBuffer_SPI0[SPI_DATA_LENGTH] = {0};
-__attribute__((section(".data.$RAM2"))) uint8_t SPI_masterSendBuffer_SPI0[SPI_DATA_LENGTH] = {0};
-__attribute__((section(".data.$RAM2"))) uint8_t spi_masterReceiveBuffer_SPI1[SPI_DATA_LENGTH] = {0};
-__attribute__((section(".data.$RAM2"))) uint8_t SPI_masterSendBuffer_SPI1[SPI_DATA_LENGTH] = {0};
+const uint32_t SPI_0_BAUDRATE = 3000000U;
+const uint32_t SPI_1_BAUDRATE = 1000000U;
 
-void SPI0Setup(void);
-void SPI1Setup(void);
+volatile bool SPI0inUse = false;
+volatile bool SPI1inUse = false;
 
 void SPIInit(void)
 {
@@ -62,236 +61,293 @@ void SPIInit(void)
 
 void SPI0Setup(void)
 {
-    dspi_master_config_t masterConfig_SPI0;
+    dspi_master_config_t config;
 
-	/*Master config*/
-	masterConfig_SPI0.whichCtar = kDSPI_Ctar0;
-	masterConfig_SPI0.ctarConfig.baudRate = SPI_0_BAUDRATE;
-	masterConfig_SPI0.ctarConfig.bitsPerFrame = 8;
-	masterConfig_SPI0.ctarConfig.cpol = kDSPI_ClockPolarityActiveHigh;
-	masterConfig_SPI0.ctarConfig.cpha = kDSPI_ClockPhaseSecondEdge;
-	masterConfig_SPI0.ctarConfig.direction = kDSPI_MsbFirst;
-	masterConfig_SPI0.ctarConfig.pcsToSckDelayInNanoSec = 2000;
-	masterConfig_SPI0.ctarConfig.lastSckToPcsDelayInNanoSec = 2000;
-	masterConfig_SPI0.ctarConfig.betweenTransferDelayInNanoSec = 1000;
+	config.whichCtar = kDSPI_Ctar0;
+	config.ctarConfig.baudRate = SPI_0_BAUDRATE;
+	config.ctarConfig.bitsPerFrame = 8;
+	config.ctarConfig.cpol = kDSPI_ClockPolarityActiveHigh;
+	config.ctarConfig.cpha = kDSPI_ClockPhaseSecondEdge;
+	config.ctarConfig.direction = kDSPI_MsbFirst;
+	config.ctarConfig.pcsToSckDelayInNanoSec = 2000;
+	config.ctarConfig.lastSckToPcsDelayInNanoSec = 2000;
+	config.ctarConfig.betweenTransferDelayInNanoSec = 1000;
 
-	masterConfig_SPI0.whichPcs = kDSPI_Pcs0;
-	masterConfig_SPI0.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
+	config.whichPcs = kDSPI_Pcs0;
+	config.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
 
-	masterConfig_SPI0.enableContinuousSCK = false;
-	masterConfig_SPI0.enableRxFifoOverWrite = false;
-	masterConfig_SPI0.enableModifiedTimingFormat = false;
-	masterConfig_SPI0.samplePoint = kDSPI_SckToSin0Clock;
+	config.enableContinuousSCK = false;
+	config.enableRxFifoOverWrite = false;
+	config.enableModifiedTimingFormat = false;
+	config.samplePoint = kDSPI_SckToSin0Clock;
 
-	DSPI_MasterInit(SPI0, &masterConfig_SPI0, CLOCK_GetFreq(DSPI0_CLK_SRC));
+	DSPI_MasterInit(SPI0, &config, CLOCK_GetFreq(DSPI0_CLK_SRC));
 }
 
 void SPI1Setup(void)
 {
-    dspi_master_config_t masterConfig_SPI1;
+    dspi_master_config_t config;
 
-	/*Master config*/
-    masterConfig_SPI1.whichCtar = kDSPI_Ctar0;
-    masterConfig_SPI1.ctarConfig.baudRate = SPI_1_BAUDRATE;
-    masterConfig_SPI1.ctarConfig.bitsPerFrame = 8;
-    masterConfig_SPI1.ctarConfig.cpol = kDSPI_ClockPolarityActiveHigh;
-    masterConfig_SPI1.ctarConfig.cpha = kDSPI_ClockPhaseSecondEdge;
-    masterConfig_SPI1.ctarConfig.direction = kDSPI_MsbFirst;
-    masterConfig_SPI1.ctarConfig.pcsToSckDelayInNanoSec = 2000;
-    masterConfig_SPI1.ctarConfig.lastSckToPcsDelayInNanoSec = 2000;
-    masterConfig_SPI1.ctarConfig.betweenTransferDelayInNanoSec = 1000;
+    config.whichCtar = kDSPI_Ctar0;
+    config.ctarConfig.baudRate = SPI_1_BAUDRATE;
+    config.ctarConfig.bitsPerFrame = 8;
+    config.ctarConfig.cpol = kDSPI_ClockPolarityActiveHigh;
+    config.ctarConfig.cpha = kDSPI_ClockPhaseSecondEdge;
+    config.ctarConfig.direction = kDSPI_MsbFirst;
+    config.ctarConfig.pcsToSckDelayInNanoSec = 2000;
+    config.ctarConfig.lastSckToPcsDelayInNanoSec = 2000;
+    config.ctarConfig.betweenTransferDelayInNanoSec = 1000;
 
-    masterConfig_SPI1.whichPcs = kDSPI_Pcs0;
-    masterConfig_SPI1.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
+    config.whichPcs = kDSPI_Pcs0;
+    config.pcsActiveHighOrLow = kDSPI_PcsActiveLow;
 
-    masterConfig_SPI1.enableContinuousSCK = false;
-    masterConfig_SPI1.enableRxFifoOverWrite = false;
-    masterConfig_SPI1.enableModifiedTimingFormat = false;
-    masterConfig_SPI1.samplePoint = kDSPI_SckToSin0Clock;
+    config.enableContinuousSCK = false;
+    config.enableRxFifoOverWrite = false;
+    config.enableModifiedTimingFormat = false;
+    config.samplePoint = kDSPI_SckToSin0Clock;
 
-	DSPI_MasterInit(SPI1, &masterConfig_SPI1, CLOCK_GetFreq(DSPI1_CLK_SRC));
+	DSPI_MasterInit(SPI1, &config, CLOCK_GetFreq(DSPI1_CLK_SRC));
 }
 
 int SPI0WritePageRegByte(uint8_t page, uint8_t reg, uint8_t val)
 {
+uint8_t txBuf[3];
+
+	if (SPI0inUse)
+	{
+		//SEGGER_RTT_printf(0, "SPI0inUse\n");
+		return -1;
+	}
+	SPI0inUse = true;
+
     dspi_transfer_t masterXfer;
     status_t status;
 
-	SPI_masterSendBuffer_SPI0[0] = page;
-	SPI_masterSendBuffer_SPI0[1] = reg;
-	SPI_masterSendBuffer_SPI0[2] = val;
+	txBuf[0] = page;
+	txBuf[1] = reg;
+	txBuf[2] = val;
 
     /*Start master transfer*/
-    masterXfer.txData = SPI_masterSendBuffer_SPI0;
-    masterXfer.rxData = spi_masterReceiveBuffer_SPI0;
+    masterXfer.txData = txBuf;
+    masterXfer.rxData = NULL;
     masterXfer.dataSize = 3;
     masterXfer.configFlags = kDSPI_MasterCtar0 | kDSPI_MasterPcs0 | kDSPI_MasterPcsContinuous;
 
     status = DSPI_MasterTransferBlocking(SPI0, &masterXfer);
-    if (status != kStatus_Success)
-    {
-    	return status;
-    }
 
-	return kStatus_Success;
+	SPI0inUse = false;
+
+	return status;
 }
 
 int SPI0ReadPageRegByte(uint8_t page, uint8_t reg,volatile uint8_t *val)
 {
+	uint8_t rxBuf[3];
+	uint8_t RxBuf[3];
+	if (SPI0inUse)
+	{
+		//SEGGER_RTT_printf(0, "SPI0inUse\n");
+		return -1;
+	}
+	SPI0inUse = true;
+
     dspi_transfer_t masterXfer;
     status_t status;
 
-	SPI_masterSendBuffer_SPI0[0] = page | 0x80;
-	SPI_masterSendBuffer_SPI0[1] = reg;
-	SPI_masterSendBuffer_SPI0[2] = 0xFF;
+	RxBuf[0] = page | 0x80;
+	RxBuf[1] = reg;
+	RxBuf[2] = 0xFF;
 
     /*Start master transfer*/
-    masterXfer.txData = SPI_masterSendBuffer_SPI0;
-    masterXfer.rxData = spi_masterReceiveBuffer_SPI0;
+    masterXfer.txData = RxBuf;
+    masterXfer.rxData = rxBuf;
     masterXfer.dataSize = 3;
     masterXfer.configFlags = kDSPI_MasterCtar0 | kDSPI_MasterPcs0 | kDSPI_MasterPcsContinuous;
 
     status = DSPI_MasterTransferBlocking(SPI0, &masterXfer);
-    if (status != kStatus_Success)
-    {
-    	return status;
-    }
 
-	*val = spi_masterReceiveBuffer_SPI0[2];
+	*val = rxBuf[2];
 
-	return kStatus_Success;
+	SPI0inUse = false;
+
+	return status;
 }
 
 int SPI0SeClearPageRegByteWithMask(uint8_t page, uint8_t reg, uint8_t mask, uint8_t val)
 {
     status_t status;
-
 	uint8_t tmp_val;
+
 	status = SPI0ReadPageRegByte(page, reg, &tmp_val);
-    if (status != kStatus_Success)
+
+	if (status != kStatus_Success)
     {
     	return status;
     }
+
 	tmp_val=val | (tmp_val & mask);
 	status = SPI0WritePageRegByte(page, reg, tmp_val);
-    if (status != kStatus_Success)
-    {
-    	return status;
-    }
 
-	return kStatus_Success;
+	return status;
 }
 
 int SPI0WritePageRegByteArray(uint8_t page, uint8_t reg, const uint8_t *values, uint8_t length)
 {
+	uint8_t txBuf[0x60 + 2];
+
+	if (length>0x60)
+	{
+		return kStatus_InvalidArgument;
+	}
+
+	if (SPI0inUse)
+	{
+		//SEGGER_RTT_printf(0, "SPI0inUse\n");
+		return -1;
+	}
+	SPI0inUse = true;
+
     dspi_transfer_t masterXfer;
     status_t status;
 
-	SPI_masterSendBuffer_SPI0[0] = page;
-	SPI_masterSendBuffer_SPI0[1] = reg;
+	txBuf[0] = page;
+	txBuf[1] = reg;
 	for (int i = 0; i < length; i++)
 	{
-		SPI_masterSendBuffer_SPI0[i + 2] = values[i];
+		txBuf[i + 2] = values[i];
 	}
 
     /*Start master transfer*/
-    masterXfer.txData = SPI_masterSendBuffer_SPI0;
-    masterXfer.rxData = spi_masterReceiveBuffer_SPI0;
+    masterXfer.txData = txBuf;
+    masterXfer.rxData = NULL;
     masterXfer.dataSize = length + 2;
     masterXfer.configFlags = kDSPI_MasterCtar0 | kDSPI_MasterPcs0 | kDSPI_MasterPcsContinuous;
 
     status = DSPI_MasterTransferBlocking(SPI0, &masterXfer);
-    if (status != kStatus_Success)
-    {
-    	return status;
-    }
 
-	return kStatus_Success;
+	SPI0inUse = false;
+
+	return status;
 }
 
 int SPI0ReadPageRegBytAarray(uint8_t page, uint8_t reg, volatile uint8_t *values, uint8_t length)
 {
+	uint8_t rxBuf[0x60 + 2];
+	uint8_t txBuf[0x60 + 2];
+
+	if (length > 0x60)
+	{
+		return kStatus_InvalidArgument;
+	}
+
+	if (SPI0inUse)
+	{
+		//SEGGER_RTT_printf(0, "SPI0inUse\n");
+		return -1;
+	}
+	SPI0inUse = true;
+
     dspi_transfer_t masterXfer;
     status_t status;
 
-	SPI_masterSendBuffer_SPI0[0] = page | 0x80;
-	SPI_masterSendBuffer_SPI0[1] = reg;
-	for (int i = 0; i < length; i++)
-	{
-		SPI_masterSendBuffer_SPI0[i + 2] = 0xFF;
-	}
+    txBuf[0] = page | 0x80;
+    txBuf[1] = reg;
 
     /*Start master transfer*/
-    masterXfer.txData = SPI_masterSendBuffer_SPI0;
-    masterXfer.rxData = spi_masterReceiveBuffer_SPI0;
+    masterXfer.txData = txBuf;
+    masterXfer.rxData = rxBuf;
     masterXfer.dataSize = length + 2;
     masterXfer.configFlags = kDSPI_MasterCtar0 | kDSPI_MasterPcs0 | kDSPI_MasterPcsContinuous;
 
     status = DSPI_MasterTransferBlocking(SPI0, &masterXfer);
+
     if (status != kStatus_Success)
     {
+		SPI0inUse = false;
     	return status;
     }
 
 	for (int i = 0; i < length; i++)
 	{
-		values[i] = spi_masterReceiveBuffer_SPI0[i + 2];
+		values[i] = rxBuf[i + 2];
 	}
 
-	return kStatus_Success;
+	SPI0inUse = false;
+
+	return status;
 }
 
 int SPI1WritePageRegByteArray(uint8_t page, uint8_t reg, const uint8_t *values, uint8_t length)
 {
+	uint8_t txBuf[32];
+
+	if (SPI1inUse)
+	{
+		//SEGGER_RTT_printf(0, "SPI1inUse\n");
+		return -1;
+	}
+	SPI1inUse = true;
+
     dspi_transfer_t masterXfer;
     status_t status;
 
-	SPI_masterSendBuffer_SPI1[0] = page;
-	SPI_masterSendBuffer_SPI1[1] = reg;
+    txBuf[0] = page;
+    txBuf[1] = reg;
 	for (int i = 0; i < length; i++)
 	{
-		SPI_masterSendBuffer_SPI1[i + 2] = values[i];
+		txBuf[i + 2] = values[i];
 	}
 
     /*Start master transfer*/
-    masterXfer.txData = SPI_masterSendBuffer_SPI1;
-    masterXfer.rxData = spi_masterReceiveBuffer_SPI1;
+    masterXfer.txData = txBuf;
+    masterXfer.rxData = NULL;
     masterXfer.dataSize = length + 2;
     masterXfer.configFlags = kDSPI_MasterCtar0 | kDSPI_MasterPcs0 | kDSPI_MasterPcsContinuous;
 
     status = DSPI_MasterTransferBlocking(SPI1, &masterXfer);
-    if (status != kStatus_Success)
-    {
-    	return status;
-    }
 
-	return kStatus_Success;
+	SPI1inUse = false;
+
+	return status;
 }
 
 int SPI1ReadPageRegByteArray(uint8_t page, uint8_t reg, volatile uint8_t *values, uint8_t length)
 {
+	uint8_t rxBuf[32];
+	uint8_t txBuf[32];
+
+	if (SPI1inUse)
+	{
+		//SEGGER_RTT_printf(0, "SPI1inUse\n");
+		return -1;
+	}
+	SPI1inUse = true;
+
     dspi_transfer_t masterXfer;
     status_t status;
 
-	SPI_masterSendBuffer_SPI1[0]= page | 0x80;
-	SPI_masterSendBuffer_SPI1[1]= reg;
+    txBuf[0]= page | 0x80;
+    txBuf[1]= reg;
 
     /*Start master transfer*/
-    masterXfer.txData = SPI_masterSendBuffer_SPI1;
-    masterXfer.rxData = spi_masterReceiveBuffer_SPI1;
+    masterXfer.txData = txBuf;
+    masterXfer.rxData = rxBuf;
     masterXfer.dataSize = length + 2;
     masterXfer.configFlags = kDSPI_MasterCtar0 | kDSPI_MasterPcs0 | kDSPI_MasterPcsContinuous;
 
     status = DSPI_MasterTransferBlocking(SPI1, &masterXfer);
     if (status != kStatus_Success)
     {
+		SPI1inUse = false;
     	return status;
     }
 
 	for (int i = 0; i < length; i++)
 	{
-		values[i] = spi_masterReceiveBuffer_SPI1[i + 2];
+		values[i] = rxBuf[i + 2];
 	}
 
-	return kStatus_Success;
+	SPI1inUse = false;
+
+	return status;
 }

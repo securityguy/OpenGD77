@@ -15,13 +15,18 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef _UI_LOCALISATION_H_
-#define _UI_LOCALISATION_H_
+#ifndef _OPENGD77_UILOCALISATION_H_
+#define _OPENGD77_UILOCALISATION_H_
 
-#define NUM_LANGUAGES 12
+#if defined(LANGUAGE_BUILD_JAPANESE)
+#define NUM_LANGUAGES 2
+#else
+#define NUM_LANGUAGES 15
+#endif
+
 #define LANGUAGE_TEXTS_LENGTH 17
 
-typedef struct stringsTable
+typedef struct
 {
 /*
  * IMPORTANT
@@ -47,7 +52,7 @@ typedef struct stringsTable
    const char *channel_details;// Menu number  12
    const char *language;// Menu number  13
    const char *new_contact;// Menu number  14
-   const char *contact_list;// Menu number  15
+   const char *dmr_contacts;// Menu number  15
    const char *contact_details;// Menu number 16
    const char *hotspot_mode;// Menu number 17
 
@@ -109,7 +114,7 @@ typedef struct stringsTable
    const char *rx_group;
    const char *on;
    const char *timeout_beep;
-   const char *factory_reset;
+   const char *UNUSED_1;
    const char *calibration;
    const char *band_limits;
    const char *beep_volume;
@@ -179,9 +184,50 @@ typedef struct stringsTable
    const char *dmr_ts_filter;
    const char *dtmf_contact_list;// Menu number 18
    const char *channel_power;// "Ch Power" for the Channel details screen
-   const char *channel_power_from_master;// "Master" for the power setting on the Channel details screen
+   const char *from_master;// "Master" for the power or squelch setting on the Channel details screen
+   const char *set_quickkey;
+   const char *dual_watch;
+   const char *info;
+   const char *pwr;
+   const char *user_power;
+   const char *temperature;
+   const char *celcius;
+   const char *seconds;
+   const char *radio_info;
+   const char *temperature_calibration;
+   const char *pin_code;
+   const char *please_confirm;
+   const char *vfo_freq_bind_mode;
+   const char *overwrite_qm;
+   const char *eco_level;// Economy / Power saving level
+   const char *buttons;
+   const char *leds;
 } stringsTable_t;
 
 extern const stringsTable_t languages[];
 extern const stringsTable_t *currentLanguage;
+
+enum languageNamesOrder  { 	englishLanguageName = 0,
+#if defined(LANGUAGE_BUILD_JAPANESE)
+							japaneseLanguageName,
+#else
+							catalanLanguageName,
+							danishLanguageName,
+							frenchLanguageName,
+							deutschGermanLanguageName,
+							italianLanguageName,
+							portuguesLanguageName,
+							spanishLanguageName,
+							suomiFinnishLanguageName,
+							polishLanguageName,
+							turkishLanguageName,
+							czechLanguageName,
+							nederlandsDutchLanguageName,
+							slovenianLanguageName,
+							portuguesBrazilLanguageName
+#endif
+};
+
+extern const int LANGUAGE_DISPLAY_ORDER[];
+
 #endif

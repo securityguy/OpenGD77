@@ -17,10 +17,10 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 /*
- * Translators: IU4LEG, IZ2EIB, IU4LEG
+ * Translators: IU4LEG, IZ2EIB
  *
  *
- * Rev: 2020.07.13 IZ2EIB  & IU4LEG 
+ * Rev: 2021.02.28 IZ2EIB  & IU4LEG
  */
 #ifndef USER_INTERFACE_LANGUAGES_ITALIAN_H_
 #define USER_INTERFACE_LANGUAGES_ITALIAN_H_
@@ -49,7 +49,7 @@ const stringsTable_t italianLanguage =
 .channel_details		   = "Dettagli canale", // MaxLen: 16
 .language				   = "Lingua", // MaxLen: 16
 .new_contact			   = "Nuovo Contatto", // MaxLen: 16
-.contact_list			   = "Lista Contatti", // MaxLen: 16
+.dmr_contacts				= "DMR contacts", // MaxLen: 16
 .contact_details		   = "Det.gli Contatto", // MaxLen: 16
 .hotspot_mode			   = "Hotspot", // MaxLen: 16
 .built					   = "Versione", // MaxLen: 16
@@ -79,7 +79,7 @@ const stringsTable_t italianLanguage =
 .scan					   = "Scansione", // MaxLen: 16
 .channelToVfo			   = "Canale --> VFO", // MaxLen: 16
 .vfoToChannel			   = "VFO --> Canale", // MaxLen: 16
-.vfoToNewChannel		   = "VFO --> New Ch.", // MaxLen: 16
+.vfoToNewChannel		   = "VFO --> Nuovo Ch", // MaxLen: 16
 .group					   = "Gruppo", // MaxLen: 16 (with .type)
 .private				   = "Privato", // MaxLen: 16 (with .type)
 .all					   = "Tutti", // MaxLen: 16 (with .type)
@@ -100,12 +100,12 @@ const stringsTable_t italianLanguage =
 .off					   = "Off", // MaxLen: 16 (with ':' + .timeout_beep, .calibration or .band_limits)
 .zone_skip				   = "Salta Zona", // MaxLen: 16 (with ':' + .yes or .no)
 .all_skip				   = "Salta Tutti",// MaxLen: 16 (with ':' + .yes or .no)
-.yes					   = "Sì", // MaxLen: 16 (with ':' + .zone_skip, .all_skip or .factory_reset)
-.no						   = "No", // MaxLen: 16 (with ':' + .zone_skip, .all_skip or .factory_reset)
+.yes					   = "Sì", // MaxLen: 16 (with ':' + .zone_skip, .all_skip)
+.no						   = "No", // MaxLen: 16 (with ':' + .zone_skip, .all_skip)
 .rx_group				   = "Rx Grp", // MaxLen: 16 (with ':' and codeplug group name)
 .on						   = "On", // MaxLen: 16 (with ':' + .calibration or .band_limits)
 .timeout_beep			   = "Bip Timeout", // MaxLen: 16 (with ':' + .off or 5..20)
-.factory_reset			   = "Reset Fabb.", // MaxLen: 16 (with ':' + .yes or .no)
+.UNUSED_1				= "",
 .calibration			   = "Calibrazione", // MaxLen: 16 (with ':' + .on or .off)
 .band_limits			   = "Limiti Banda", // MaxLen: 16 (with ':' + .on or .off)
 .beep_volume			   = "Volume Bip", // MaxLen: 16 (with ':' + -24..6 + 'dB')
@@ -125,7 +125,7 @@ const stringsTable_t italianLanguage =
 .no___in_uppercase		   = "NO", // MaxLen: 8 (choice above green/red buttons)
 .DISMISS				   = "RIFIUTA", // MaxLen: 8 (choice above green/red buttons)
 .scan_mode				   = "Modo Scan", // MaxLen: 16 (with ':' + .hold, .pause or .stop)
-.hold					   = "Hold", // MaxLen: 16 (with ':' + .scan_mode)
+.hold					   = "Blocco", // MaxLen: 16 (with ':' + .scan_mode)
 .pause					   = "Pausa", // MaxLen: 16 (with ':' + .scan_mode)
 .empty_list				   = "Lista Vuota", // MaxLen: 16
 .delete_contact_qm		   = "Canc. Contatto?", // MaxLen: 16
@@ -137,7 +137,7 @@ const stringsTable_t italianLanguage =
 .delete_contact			   = "Canc. Contatto", // MaxLen: 16
 .group_call				   = "Chiama Gruppo", // MaxLen: 16
 .all_call				   = "Chiama Tutti", // MaxLen: 16
-.tone_scan				   = "Scansione Toni",//// MaxLen: 16
+.tone_scan				   = "Scan Toni",//// MaxLen: 16
 .low_battery			   = "BATTERIA SCARICA",//// MaxLen: 16
 .Auto					   = "Automatico", // MaxLen 16 (with .mode + ':') 
 .manual					   = "Manuale",  // MaxLen 16 (with .mode + ':') 
@@ -173,9 +173,26 @@ const stringsTable_t italianLanguage =
 .dmr_filter				   = "Filtro DMR",// MaxLen: 12 (with ':' + settings: "TG" or "Ct" or "RxG")
 .dmr_cc_filter			   = "Filtro CC", // MaxLen: 12 (with ':' + settings: .on or .off)
 .dmr_ts_filter			   = "Filtro TS", // MaxLen: 12 (with ':' + settings: .on or .off)
-.dtmf_contact_list			= "Lista DTMF", // Maxlen: 16
-.channel_power				= "W Ch", //Displayed as "Ch Power:" + .channel_power_from_master or "Ch Power:"+ power text e.g. "Power:500mW" . Max total length 16
-.channel_power_from_master	= "di base",// Displayed if per-channel power is not enabled  the .channel_power
+.dtmf_contact_list			= "FM DTMF contacts", // Maxlen: 16
+.channel_power				= "W Ch", //Displayed as "Ch Power:" + .from_master or "Ch Power:"+ power text e.g. "Power:500mW" . Max total length 16
+.from_master				= "di base",// Displayed if per-channel power is not enabled  the .channel_power
+.set_quickkey				= "Imposta tasti", // MaxLen: 16
+.dual_watch				= "Doppio ascolto", // MaxLen: 16
+.info					= "Info", // MaxLen: 16 (with ':' + .off or.ts or .pwr or .both)
+.pwr					= "Potenza",
+.user_power				= "Volt PA",
+.temperature				= "Temperatura", // MaxLen: 16 (with ':' + .celcius or .fahrenheit)
+.celcius				= "°C",
+.seconds				= "secondi",
+.radio_info				= "Info radio",
+.temperature_calibration		= "Cal Temp",
+.pin_code				= "Codice PIN",
+.please_confirm				= "Conferma, prego", // MaxLen: 15
+.vfo_freq_bind_mode			= "Abbina Freq.",
+.overwrite_qm				= "Sovrascrivi ?", //Maxlen: 14 chars
+.eco_level				= "Grado consumi",
+.buttons				= "Bottoni",
+.leds					= "LED"
 };
 /********************************************************************
  *

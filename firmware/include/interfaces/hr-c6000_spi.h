@@ -24,16 +24,6 @@
 
 #include "fsl_dspi.h"
 
-
-#define SPI_0_BAUDRATE (1500000U) /*! Transfer baudrate - 1500k */
-#define SPI_1_BAUDRATE (500000U) /*! Transfer baudrate - 500k */
-
-#define SPI_DATA_LENGTH (256)         /*! Transfer size */
-extern uint8_t spi_masterReceiveBuffer_SPI0[SPI_DATA_LENGTH];
-extern uint8_t SPI_masterSendBuffer_SPI0[SPI_DATA_LENGTH];
-extern uint8_t spi_masterReceiveBuffer_SPI1[SPI_DATA_LENGTH];
-extern uint8_t SPI_masterSendBuffer_SPI1[SPI_DATA_LENGTH];
-
 #if defined(PLATFORM_GD77) || defined(PLATFORM_GD77S)
 
 // SPI1 to C6000 (V_SPI)

@@ -16,21 +16,27 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_ADC_H_
-#define _FW_ADC_H_
+#ifndef _OPENGD77_ADC_H_
+#define _OPENGD77_ADC_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <FreeRTOS.h>
+#include <task.h>
 #include "fsl_adc16.h"
+
+#define NO_ADC_CHANNEL_OVERRIDE    0
 
 extern const int CUTOFF_VOLTAGE_UPPER_HYST;
 extern const int CUTOFF_VOLTAGE_LOWER_HYST;
 extern const int BATTERY_MAX_VOLTAGE;
+extern const int TEMPERATURE_DECIMAL_RESOLUTION;
 
-void adcTriggerConversion(void);
+void adcTriggerConversion(int channelOverride);
 void adcInit(void);
 void ADC0_IRQHandler(void);
 int adcGetBatteryVoltage(void);
 int getVOX(void);
 
-#endif /* _FW_ADC_H_ */
+
+
+#endif /* _OPENGD77_ADC_H_ */
+

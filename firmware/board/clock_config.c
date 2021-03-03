@@ -152,7 +152,7 @@ const sim_clock_config_t simConfig_BOARD_BootClockRUN = {
     .clkdiv1 = 0x1230000U,                    /* SIM_CLKDIV1 - OUTDIV1: /1, OUTDIV2: /2, OUTDIV3: /3, OUTDIV4: /4 */
 };
 const osc_config_t oscConfig_BOARD_BootClockRUN = {
-    .freq = 8000000U,                 /* Oscillator frequency: 8000000Hz */
+    .freq = BOARD_XTAL0_CLK_HZ,       /* Oscillator frequency:  */
     .capLoad = (OSC_CAP0P),           /* Oscillator capacity load: 0pF */
     .workMode = kOSC_ModeOscLowPower, /* Oscillator low power */
     .oscerConfig = {
@@ -344,8 +344,8 @@ const mcg_config_t mcgConfig_BOARD_BootClockHSRUN = {
     .pll0Config =
         {
             .enableMode = MCG_PLL_DISABLE, /* MCGPLLCLK disabled */
-            .prdiv = 0x1U,                 /* PLL Reference divider: divided by 2 */
-            .vdiv = 0x6U,                  /* VCO divider: multiplied by 30 */
+            .prdiv = 0x3U,                 /* PLL Reference divider: divided by 4 */
+            .vdiv = 0x5U,                  /* VCO divider: multiplied by 29 */
         },
 };
 const sim_clock_config_t simConfig_BOARD_BootClockHSRUN = {
@@ -354,7 +354,7 @@ const sim_clock_config_t simConfig_BOARD_BootClockHSRUN = {
     .clkdiv1 = 0x1340000U,                    /* SIM_CLKDIV1 - OUTDIV1: /1, OUTDIV2: /2, OUTDIV3: /4, OUTDIV4: /5 */
 };
 const osc_config_t oscConfig_BOARD_BootClockHSRUN = {
-    .freq = BOARD_XTAL0_CLK_HZ,                 /* Oscillator frequency: 8000000Hz */
+    .freq = BOARD_XTAL0_CLK_HZ,                 /* Oscillator frequency:  */
     .capLoad = (OSC_CAP0P),           /* Oscillator capacity load: 0pF */
     .workMode = kOSC_ModeOscLowPower, /* Oscillator low power */
     .oscerConfig = {
