@@ -151,4 +151,7 @@ int SPI0ReadPageRegBytAarray(uint8_t page, uint8_t reg, volatile uint8_t *values
 int SPI1WritePageRegByteArray(uint8_t page, uint8_t reg, const uint8_t *values, uint8_t length);
 int SPI1ReadPageRegByteArray(uint8_t page, uint8_t reg, volatile uint8_t *values, uint8_t length);
 
+void SPI0Setup(void);
+void SPI1Setup(void);
+
 #endif /* _FW_SPI_H_ */

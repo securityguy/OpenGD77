@@ -214,6 +214,18 @@ const int trxDTMFfreq2[] = {  941,  697,  697,  697,  770,  770,  770,  852,  85
 
 calibrationPowerValues_t trxPowerSettings;
 
+static uint8_t trxAnalogFilterLevel = ANALOG_FILTER_CTCSS;
+
+uint8_t trxGetAnalogFilterLevel()
+{
+	return trxAnalogFilterLevel;
+}
+
+void trxSetAnalogFilterLevel(uint8_t newFilterLevel)
+{
+	trxAnalogFilterLevel = newFilterLevel;
+}
+
 int	trxGetMode(void)
 {
 	return currentMode;
@@ -1071,7 +1083,7 @@ void trxSetRxCSS(uint16_t tone)
 		I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x5b, (threshold & 0xFF), (threshold & 0xFF));
 		//set detection to CTCSS2
 		AT1846SetClearReg2byteWithMask(0x3a, 0xFF, 0xE0, 0x00, 0x08);
-		rxCSSactive = (nonVolatileSettings.analogFilterLevel != ANALOG_FILTER_NONE);
+		rxCSSactive = (trxAnalogFilterLevel != ANALOG_FILTER_NONE);
 	}
 	else if (codeplugChannelToneIsDCS(tone))
 	{
@@ -1087,7 +1099,7 @@ void trxSetRxCSS(uint16_t tone)
 		// The cdcss_sel bits have to be set for DCS receive to work
 		AT1846SetClearReg2byteWithMask(0x4e, 0x38, 0x3F, 0x04, 0x00); // enable transmit DCS
 		//set_clear_I2C_reg_2byte_with_mask(0x4e, 0xF9, 0xFF, 0x04, 0x00); // enable transmit DCS
-		rxCSSactive = (nonVolatileSettings.analogFilterLevel != ANALOG_FILTER_NONE);
+		rxCSSactive = (trxAnalogFilterLevel != ANALOG_FILTER_NONE);
 	}
 	taskEXIT_CRITICAL();
 }

@@ -84,6 +84,7 @@ For the latest information and discussions, please refer to the development and 
       * [Key rpt](#key-rpt)
       * [Filter time](#filter-time)
       * [Scan delay](#scan-delay)
+      * [Scan dwell](#scan-dwell)
       * [Scan mode](#scan-mode)
       * [Squelch UHF](#squelch-uhf)
       * [Squelch 220](#squelch-220)
@@ -92,6 +93,9 @@ For the latest information and discussions, please refer to the development and 
       * [Hotspot](#hotspot)
       * [TA Tx](#ta-tx)
       * [Allow PC](#allow-pc)
+      * [User Power](#user-power)
+      * [Temp Cal](#temp-cal)
+      * [Bat Cal](#bat-cal)
       * [Eco Level](#eco-level)
     * [Display Options](#display-options)
       * [Brightness](#brightness)
@@ -104,6 +108,7 @@ For the latest information and discussions, please refer to the development and 
       * [Contact](#contact)
       * [Battery units](#battery-units)
       * [Info](#info)
+      * [Leds](#leds)
     * [Sound Options](#sound-options)
       * [Timeout beep](#timeout-beep)
       * [Beep volume](#beep-volume)
@@ -157,6 +162,8 @@ For the latest information and discussions, please refer to the development and 
 	    * [Boot Tune in Morse code](#boot-tune-in-morse-code)
 	  * [Melodies and Notes](#melodies-and-notes)
 	  * [Boot Image](#boot-image)
+   * [Voice prompts](#voice-prompts)
+   * [Hardware problems and other errata](#hardware-problems-and-other-errata)
 <!-- /TOC -->
 
 
@@ -174,6 +181,7 @@ The photos will be updated when the firmware in a particular area stabilises.
 
 The intention of the project is to create a fully featured non-commercial firmware that entirely replaces the Radioddity GD-77, and Baofeng DM-1801 factory firmware.
 This firmware is specifically designed for **Amateur Radio** use, and has features not available in the official firmware.
+The license forbids commerial use of this firmware.
 
 *Note:*
 
@@ -181,7 +189,6 @@ This firmware is specifically designed for **Amateur Radio** use, and has featur
 - SMS message Tx and Rx **are not currently supported**, but may possibly be supported in the future.
 - Scan Lists **are not supported** because Channel or Zone scan feature provides almost identical functionality.
 - Privacy and Encryption **will not** be supported, as its illegal for Amateur Radio use, developers in some countries (*e.g.* Australia) are now legally required to put a back door access into any encryption systems at the request of the government, hence effectively making it illegal or impossible to develop systems that contain encryption.
-- Battery saving features have **not been developed**, hence this firmware causes much higher battery usage in Rx when there is no signal. Some battery saving features may be developed in the future, however some advanced features like the S meter will not be possible if battery saving is implemented.
 
 
 ### Download links and other resources
@@ -209,13 +216,13 @@ The firmware can be installed onto the following radios
 - Baofeng DM-1801 (also known as Baofeng DM-860)
 - Baofeng RD-5R (also known as Baofeng DM-5R Tier 2)
 
-Firmware can be installed using the *FirmwareLoader.exe* in the firmware release web page, using the *Firmware loader* included in the [CPS software](#cps-software), or by using the firmware update tool provided by Radioddity or Baofeng, with their official firmware update packages. This can be downloaded from Radioddity’s website [radioddity.com](https://radioddity.com/) (*see Radioddity’s documentation on how to use their firmware update tool)*
+The firmware can easy be loaded using the [CPS software](#cps-software), or by using the firmware update tool provided by Radioddity or Baofeng, with their official firmware update packages. This can be downloaded from Radioddity’s website [radioddity.com](https://radioddity.com/) (*see Radioddity’s documentation on how to use their firmware update tool)*
 
-Installation of the firmware is undertaken at the owners own risk, but the official firmware can usually be reloaded onto the radio if the user has problems with the firmware, **as long as the operator takes a full backup of their radio using the OpenGD77 CPS immediately after the firmware has been installed** (see [*backup section*](#backup-before-you-do-anything-else))
+Installation of the firmware is undertaken at the owners own risk, but the official firmware can usually be reloaded onto the radio if the user has problems with the firmware, **as long as the operator takes a full backup of their radio using the CPS immediately after the firmware has been installed** (see [*backup section*](#backup-before-you-do-anything-else))
 
 *Note:*
 
-- The official Radioddity CPS PC software is not compatible with the firmware, and the **OpenGD77 CPS** should be used instead. This can be downloaded from the link show in [section 1.1](#download-links-and-other-resources) of this guide. This CPS must also be used for the Baofeng DM-1801
+- The official Radioddity CPS PC software is not compatible with the firmware, and the **OpenGD77 CPS** should be used instead. This can be downloaded from the link show in [section 1.1](#download-links-and-other-resources) of this guide. This CPS must also be used for the Baofeng DM-1801 and RD-5R
 
 ### Transferring data to Radio
 
@@ -351,10 +358,10 @@ Changing the power on **either** VFO also changes the **Master** power setting.
 - Press **Function** + **Right** to increase the power.
 - Press **Function** + **Left** to decrease the power.
 
-Power can be set to **50mW**, **250mW**, **500mW**, **750mW**, **1W**, **2W**, **3W**, **4W**, **5W** and **5W++**.
+Power can be set to **50mW**, **250mW**, **500mW**, **750mW**, **1W**, **2W**, **3W**, **4W**, **5W** and **+W-**.
 
-The **5W++** power setting configures the PA drive to its **maximum value**.
-**This power setting is designed for emergency use only, and results in around 5.5W being produced on 70cm and 7W on 2m.**
+The **+W-** power setting configures the PA drive to the value set in the Options screen "User Power" setting.
+
 To access this power setting, select the **5W** power setting, then press and hold **Function** + **Right**
 
 *Notes:*
@@ -701,6 +708,8 @@ To make the squelch change permanent to a Channel, press **Function** + **Green*
 
 The tone will also be audible through the speaker.
 
+<div style="page-break-after: always; break-after: page;"></div>
+
 ### VFO specific functionality
 
 The VFO displays both the TX and RX frequency at all times.
@@ -748,6 +757,8 @@ Use this method to set different TX and RX frequencies. For example, this can be
 
 The only case where the frequency difference **will not be maintained** is if the TX frequency goes outside of the range of frequencies supported by the radio hardware.
 
+<div style="page-break-after: always; break-after: page;"></div>
+
 ## Monitor mode
 
 Monitor mode enables the operator to listen to a signal even if it is currently being filtered by either the **DMR TG**, **TS** or **CC** filters or the **FM CTCSS / DCS** filter or **FM squelch** level setting.
@@ -772,7 +783,7 @@ During transmission the *Talk Timer* either counts up or down, depending on whet
 
 If a timeout is defined in the CPS, or adjusted in the *Channel Details* screen, the *Talk Timer* will count down and when the timeout period is reached a beep will play and the TX will stop.
 
-In **DMR Tier2** the timer will not start counting until the repeater becomes active.
+When transmitting to a DMR repeater which is not currently transmitting, the timer will not start counting until the repeater becomes active.
 
 During FM and DMR Tx, a *VU meter* is displayed showing the input microphone level, in the form of a bar graph across the top of the screen.
 
@@ -812,7 +823,7 @@ The VFO screen has a special scanning mode, which is entered by performing a **L
 
 When scan mode is enabled, the display changes to show the *lower* and *upper* scan limit frequencies, instead of showing the Tx frequency.
 
-Initially the scan limits will be set to the current VFO Rx frequency, minus 1Mhz to plus 1Mhz.
+Initially the scan limits will be set to the current VFO Rx frequency to the current VFO Rx frequency plus 1Mhz.
 
 Scan limits can be changed by manually entering both frequencies *e.g.*
 
@@ -1046,6 +1057,10 @@ During scan mode, this controls the duration that the radio tunes in to a channe
 
 This works when **Pause** is selected as the scan mode.
 
+#### Scan dwell<!-- linebreak -->
+
+During scan mode, this controls the duration that the radio listens (dwells) on each frequency. This applies to both channel mode and VFO mode scanning. The default value is 30ms. Longer dwell times result in better sensitivity to weak signals, but slower overall scan speed.  For DMR simplex channels the dwell time duing the scan will be set to 60ms even if the dwell time is set to less than 60ms, because its necessary to listen for at least 60ms in order to receive at least 1 DMR frame / timeslot.
+
 #### Scan mode<!-- linebreak -->
 
 This setting controls how the receiver stops when there is a signal during scan mode.
@@ -1108,6 +1123,31 @@ The text of **Line1** and **Line2** from the "**Boot Item**" CPS screen is used 
 
 Allows **Private Calls** to be received.
 
+#### User Power<!-- linebreak -->
+
+Allows the operator to set the hardware PA drive level to any value between 0 and the maximum (4100)
+
+The transmit power produced by this setting will vary depending on the band, and also individual radio performance.
+
+Power output on VHF is much higher than it is on UHF for the same PA drive value.
+
+To use the User Power value, the power setting much be set to the +W- option. See the "Controlling PA power" section.
+
+#### Temp Cal<!-- linebreak -->
+Temperature sensor calibraton
+
+The microcontroller (CPU) in radio contains an internal temperature sensor, which measures the temperature of the microcontroller.
+The temperature is displayed on the temperature page of the Radio Info screen.
+The temperature sensor value needs to be calibrated before it is at all accurate, and this setting allows the operator to set an offset value, so that the sensor reads correctly for their radio.
+It should be noted that this is the temperature of the microcontroller and not the PA or the battery.
+
+
+#### Bat Cal<!-- linebreak -->
+Battery voltage calibration
+
+The radio contains a circuit which measures the voltage of the battery, however because of hardware design errors and tolerances in external components, the value measured by the microcontroller may not be accurate.
+This setting allows the operator to correct for the component tollerances and hardware design.
+
 
 #### Eco Level<!-- linebreak -->
 
@@ -1119,16 +1159,24 @@ For other values refer to the table below
 
 Level | Rx duty cycle | Entry delay (secs) | Average latency (ms) | Current (mA)
 ----- | ------------- | ------------------ | -------------------  | ------------
-0  | N/A | N/A | N/A | 62
-1  | 1:1 | 10 | 320  | 40
-2  | 1:2 | 8 | 420  | 33
-3  | 1:4 | 6 | 600  | 27
-4  | 1:8 | 2 | 900  | 23
+0  | N/A  | N/A | N/A | 62
+1  | 1:1  | 10 | 240  | 40
+2  | 1:2  | 8  | 330  | 33
+3  | 1:4  | 6  | 500  | 27
+4  | 1:8  | 4  | 810  | 23
+5  | 1:16 | 4  | 1360 | 21
 
+Default is level 1.
+
+Level 2,3,4 and 5 power down the C6000 DMR chip, which can cause problems with DMR and beep audio on some radios.
+
+This is caused by an internal bug in the C6000 chip. If your radio has problem with DMR or beep audio on level 2 and above, please use Level 0 or Level 1.
 
 Current was measured on a GD-77 with a full battery, with in Rx with no signal, and no backlight.
 
+Current consumption increases as battery voltage descreases because of the switching regulators used in these radios.
 
+Average Rx idle power consumption of the GD-77 is 500mW.
 
 <div style="page-break-after: always; break-after: page;"></div>
 
@@ -1160,10 +1208,11 @@ Lower values result in dark text, higher values result in darker text but the ba
 
 Controls the display backlight operation
 
-- **Auto** Display backlight will turn on automatically when triggered by various events *e.g.* Rx of signal, or pressing a key or button.
-- **Squelch** Display backlight remains illuminated while the FM squelch is open or there is a valid DMR signal, and also remains illuminated for the specified backlight timeout after the squelch has closed. The minimum timeout period in this mode is 5 seconds.
-- **Manual** Display backlight is toggled on and off by pressing the **Black** button (**SK1**).
-- **None** Display backlight will not illuminate under any condition.
+- **Auto** The backlight will turn on automatically when triggered by various events *e.g.* Rx of signal, or pressing a key or button.
+- **Squelch** The backlight remains illuminated while the FM squelch is open or there is a valid DMR signal, and also remains illuminated for the specified backlight timeout after the squelch has closed. The minimum timeout period in this mode is 5 seconds.
+- **Manual** The backlight is toggled on and off by pressing the **Black** button (**SK1**).
+- **Buttons** The backlight will only illuminate if a button or key is pressed (including the PTT)
+- **None** The backlight will not illuminate under any condition.
 
 #### Timeout<!-- linebreak -->
 
@@ -1214,14 +1263,24 @@ Options are
 
 
 #### Info<!-- linebreak -->
+
 Controls whether the Timeslot or Power level is displayed in bold to indicate that an override is currently applied to that setting
 
 Options are
 
 - **Off**:  Neither the TS or Power is shown in bold to indicate an override
-- **TS**:   The TS is shown as cTS1 or CTS2 if the TS has been overridden by either pressing the * (Star) key or by a TS override on a Contact / TG
+- **TS**:   The TS is shown (in bold) as **TS*x*** or **cS*x*** if the TS has been overridden by either pressing the * (Star) key, or by a TS override on a Contact / TG (displayed as cS*x* in this case)
 - **Pwr**:  The Power is shown in bold if a channel specific power setting is currently being applied which overrides the master power setting
 - **Both**: Equivalent to both the TS and Pwr options as described above.
+
+#### Leds<!-- linebreak -->
+
+Controls whether the red / green (tx / rx signal) LED illuminates 
+
+Options are 
+
+- **On**: The LED(s) will illuminate as normal e.g. Red LED will illuminate when transmitting, Green LED will illuminate when there is a signal
+- **Off**: The LED(s) will not illuminate
 
 <div style="page-break-after: always; break-after: page;"></div>
 
@@ -1586,6 +1645,9 @@ Additionally holding the **Blue** (**SK2**) button as well as the **Up AND Down*
 
 On the GD-77S, which does not have a keypad, holding **Blue** (**SK2**) **AND Orange** resets **any** custom boot melody.
 
+If voice prompts are loaded into the radio, the Sound Options -> Prompt: setting will be set to Voice.
+If voice prompts are not loaded the Prompt: will be set to Beep.
+
 
 <div style="page-break-after: always; break-after: page;"></div>
 
@@ -1806,3 +1868,27 @@ For reference, the tone values in OpenGD77 are:
 #### Boot Image<!-- linebreak -->
 
 The Boot image needs to be **128 wide x 64 pixels high**. It needs to be in **1-bit png format**. (*An indexed image format that is not supported by some modern paint programs*).
+<!-- linebreak -->
+### Voice prompts<!-- linebreak -->
+
+Voice prompts are not part of the radio firmware, and have to be loaded separately using the CPS.
+They are stored in the Flash memory chip.
+
+When Voice prompts are loaded into the radio, the Sound Options->Prompt: setting is automatically changed to "Voice" so that the prompts become immediatly operational.
+
+
+
+### Hardware problems and other errata
+
+* Some older GD-77 radios appear to have a hardware fault in the C6000 DMR chip. This problem is manifest by the Beep not working when the beep level is set very low e.g. -12dB. The DMR audio can also cease to work. Increasing the Beep volume to 0dB can sometimes fix this problem, but there it has not be possible to find a firmware solution to this hardware bug, which works 100% of the time on the older radios
+* Internal voltage regulation on the Baofeng RD-5R is quite bad. It can result in the LEDs and display backlight flickering during DMR transmission on higher power settings, and is noticable even on low power settings.
+* Internal voltage smoothing on the Baofeng DM-1801 and RD-5R is not as good as on the GD-77 and this can result in noise being heard during Rx
+* Because the firmware has features like display backlight dimming and changing the beep volume, which are not available in the official firmware for any of the supported radios, some individual radios can have problems. However so that 99%+ of users can enjoy these features they have been retained in the firmware.
+* The USB connection to all radios is susceptible to RF injection during transmission. Also RF injection has been known to interfere with the PTT control when connecting via long external PTT cables.  This is not a problem in the firmware and needs to be dealt with by the radio's operator fitting the appropriate screening and RF filtering to USB and PTT cables etc, if they are used during transmission.
+* The RD-5R is very susceptible to RF injection, which makes it almost impossible to be used as a hotspot.
+* RF injection to the mic audio input is also common when using external microphones, and results in "mototboating" on DMR, unless appropriate filtering is used
+* The cases of these radios are not shielded and they are also sensitive to nearby high power radio transmissions on unrelated frequencies.
+* The RF chip (AT1846S) used in these radios is also susceptible to high power transmissions on unrelated frequencies, via the antenna RF input, even if the case is shielded.
+* The RF chip is not very good at detecting individual CTCSS tones, and has a fairly wide pass band of around 10Hz
+* The RD-5R RF design is compromised by its small form factor and lacks separate RF stages for VHF and UHF, which results in much worse RF performance than the GD-77 and DM-1801
+* The 100Mhz FM broadcast feature of the RD-5R is not supported, because no data sheet is available for the separate RF chip used for this.

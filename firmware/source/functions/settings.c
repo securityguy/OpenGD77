@@ -102,6 +102,8 @@ bool settingsLoadSettings(void)
 
 	soundBeepVolumeDivider = nonVolatileSettings.beepVolumeDivider;
 
+	trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
+
 	codeplugInitChannelsPerZone();// Initialise the codeplug channels per zone
 
 	settingsDirty = false;
@@ -196,6 +198,7 @@ void settingsRestoreDefaultSettings(void)
 
 	nonVolatileSettings.dmrCaptureTimeout = 10;// Default to holding 10 seconds after a call ends
 	nonVolatileSettings.analogFilterLevel = ANALOG_FILTER_CTCSS;
+	trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 	nonVolatileSettings.languageIndex = 0;
 	nonVolatileSettings.scanDelay = 5;// 5 seconds
 	nonVolatileSettings.scanModePause = SCAN_MODE_HOLD;

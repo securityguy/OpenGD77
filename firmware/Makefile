@@ -67,6 +67,7 @@ OZERO_SOURCES := \
 ## Drivers' source files and include directories
 ##
 DRIVERS_INC := \
+-I../                             \
 -I../drivers                      \
 -I../usb/device/class             \
 -I../usb/device/source            \

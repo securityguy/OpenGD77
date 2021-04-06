@@ -124,5 +124,7 @@ void setMicGainFM(uint8_t gain);
 
 void enableTransmission(void);
 void disableTransmission(void);
+uint8_t trxGetAnalogFilterLevel();
+void trxSetAnalogFilterLevel(uint8_t newFilterLevel);
 
 #endif /* _FW_TRX_H_ */

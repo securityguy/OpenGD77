@@ -1308,7 +1308,7 @@ void menuUtilityRenderHeader(void)
 					strcat(buffer, "R");
 				}
 
-				bool isInverted = (nonVolatileSettings.analogFilterLevel == ANALOG_FILTER_NONE);
+				bool isInverted = (trxGetAnalogFilterLevel == ANALOG_FILTER_NONE);
 				if (isInverted)
 				{
 					ucFillRect(FILTER_TEXT_X_OFFSET - 2, Y_OFFSET - 1, rectWidth, 9, false);

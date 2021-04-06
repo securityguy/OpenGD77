@@ -192,7 +192,9 @@ const stringsTable_t czechLanguage =
 .overwrite_qm				= "P›epsat ?", //Maxlen: 14 chars
 .eco_level				= "Eco Level",
 .buttons				= "Buttons",
-.leds					= "LEDs"
+.leds					= "LEDs",
+.scan_dwell_time			= "Scan dwell",
+.battery_calibration			= "Batt. Cal"
 };
 /********************************************************************
  *

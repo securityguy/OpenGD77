@@ -574,6 +574,7 @@ void uiVFOModeStopScanning(void)
 
 		trxSetRxCSS(currentChannelData->rxTone);
 		scanToneActive = false;
+		trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);// Restore the filter setting after the tone scan
 	}
 	scanActive = false;
 	menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
@@ -1632,6 +1633,7 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 				else
 				{
 					settingsSet(nonVolatileSettings.analogFilterLevel, tmpQuickMenuAnalogFilterLevel);
+					trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 				}
 				break;
 
@@ -1701,6 +1703,7 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 			case VFO_SCREEN_TONE_SCAN:
 				if (trxGetMode() == RADIO_MODE_ANALOG)
 				{
+					trxSetAnalogFilterLevel(ANALOG_FILTER_CTCSS);
 					scanToneActive = true;
 					scanTimer = SCAN_TONE_INTERVAL;
 					scanToneIndex = 0;

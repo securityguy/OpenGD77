@@ -1511,6 +1511,7 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 				else
 				{
 					settingsSet(nonVolatileSettings.analogFilterLevel, tmpQuickMenuAnalogFilterLevel);
+					trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 				}
 				menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
 				break;
