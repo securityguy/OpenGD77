@@ -194,7 +194,9 @@ const stringsTable_t italianLanguage =
 .buttons				= "Bottoni",
 .leds					= "LED",
 .scan_dwell_time			= "Ciclo SCAN",
-.battery_calibration			= "Batt. Cal"
+.battery_calibration			= "Batt. Cal",
+.low					= "Low",
+.high					= "High"
 };
 /********************************************************************
  *

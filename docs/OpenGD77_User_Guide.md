@@ -15,7 +15,7 @@ For the latest information and discussions, please refer to the development and 
   * [Codeplug compatibility](#codeplug-compatibility)
   * [Variations between different supported radios](#variations-between-different-supported-radios)
   * [Main screens (VFO and Channel screens)](#main-screens-vfo-and-channel-screens)
-    * [Changing between VFO and Channel](#changing-between-vfo-and-channel)
+    * [Changing between FM and DMR](#changing-between-fm-and-dmr)
     * [Changing Timeslot in DMR mode](#changing-timeslot-in-dmr-mode)
     * [Controlling Tx power](#controlling-tx-power)
     * [Signal strength bar graph](#signal-strength-bar-graph)
@@ -37,8 +37,8 @@ For the latest information and discussions, please refer to the development and 
         * [Filter](#filter)
         * [VFO to New Channel](#vfo-to-new-channel)
         * [Tone Scan for CTCSS or DCS tone in FM](#tone-scan-for-ctcss-or-dcs-tone-in-fm)
-	* [Dual Watch](#dual-watch)
-	* [Binding Transmit and Receive frequencies](#binding-transmit-and-receive-frequencies)
+        * [Dual Watch](#dual-watch)
+        * [Binding Transmit and Receive frequencies](#binding-transmit-and-receive-frequencies)
     * [DMR specific functionality (VFO and Channel screens)](#dmr-specific-functionality-vfo-and-channel-screens)
       * [Timeslot selection](#timeslot-selection)
       * [DMR ID callsign and name display](#dmr-id-callsign-and-name-display)
@@ -328,7 +328,7 @@ On both the VFO and Channel screens:
 
 - The VFO is actually a special type of Channel; hence the [Channel Details](#channel-details) screen also works for the VFO.
 
-### Changing between VFO and Channel
+### Changing between FM and DMR
 
 - Press the **Function** + **Star** keys to toggle between FM and DMR mode, on either the **VFO** or **Channel** screens.
 

@@ -194,7 +194,9 @@ const stringsTable_t dutchLanguage =
 .buttons				= "Knoppen",
 .leds					= "leds",
 .scan_dwell_time			= "Scan dwell",
-.battery_calibration			= "Batt. Cal"
+.battery_calibration			= "Batt. Cal",
+.low					= "Low",
+.high					= "High"
 };
 /********************************************************************
  *

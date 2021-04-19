@@ -194,7 +194,9 @@ const stringsTable_t frenchLanguage =
 .buttons				= "Boutons",
 .leds					= "DELs",
 .scan_dwell_time			= "Durée Scan",
-.battery_calibration			= "Étal. Bat."
+.battery_calibration			= "Étal. Bat.",
+.low					= "Bas",
+.high					= "Haut"
 };
 /********************************************************************
  *
