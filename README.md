@@ -2,10 +2,10 @@
 Firmware for DMR transceivers using the NXP MK22 MCU, AT1846S RF chip and HR-C6000 DMR chipset. Including the Radioddiy GD-77, Baofeng DM-1801 and Baofeng RD-5R.
 
 
-Note.
-The AMBE codec is not open source because of potential copyright problems, and instead uses binary sections from original manufacturer’s firmware.
-
 # Project status
+
+## IMPORTANT
+Due to problems with the software license, it is no longer possible to create and distribute the binaries of the firmware. This is because the software license requires that source code for the released project must be available. However this is impossible because approximiately 30% of the firmware file comes from the closed source official firmware.
 
 The firmware is relatively stable and provides DMR and FM audio transmission and reception, as well as a DMR hotspot mode.
 However it does not currently support some core functionality that the official firmware supports, including sending and receiving of text messages, or Dual Capacity Direct operation, or Dual Watch operation etc
@@ -25,7 +25,7 @@ There is an extensive User Guide https://github.com/rogerclarkmelbourne/OpenGD77
 
 # Credits
 Originally conceived by Kai DG4KLU.
-Further development by Roger VK3KYY, latterly assisted by Daniel F1RMB, Alex DL4LEX, Colin G4EML and others.
+Further development by Roger VK3KYY, latterly assisted by Daniel F1RMB, Alex DL4LEX, Colin G4EML and many others.
 
 Current lead developer and source code gatekeeper is Roger VK3KYY
 
