@@ -5,8 +5,8 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#ifndef _USB_CDC_VCOM_H_
-#define _USB_CDC_VCOM_H_ 1
+#ifndef _OPENGD77_USB_CDC_VCOM_H_
+#define _OPENGD77_USB_CDC_VCOM_H_
 
 #include "usb_device_config.h"
 #include "usb.h"
@@ -18,7 +18,7 @@
 
 #include "usb_device_descriptor.h"
 
-#include "FreeRTOS.h"
+#include <FreeRTOS.h>
 #include "semphr.h"
 #include "event_groups.h"
 
@@ -96,4 +96,4 @@ typedef struct _usb_cdc_acm_info
 
 extern usb_cdc_vcom_struct_t s_cdcVcom;
 
-#endif /* _USB_CDC_VCOM_H_ */
+#endif /* _OPENGD77_USB_CDC_VCOM_H_ */

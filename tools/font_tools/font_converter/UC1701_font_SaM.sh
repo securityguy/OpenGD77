@@ -48,7 +48,8 @@ function SplitFont() {
     mkdir $fontDir
 
     ##cp $fontFile $fontDir
-    convert "${fontFile}[32-$((CHARS_PER_FONT + 32 - 1))]" -scene $((256 - CHARS_PER_FONT)) -rotate 270 -crop $charSize $fontDir/part-%03d.xbm
+    ##convert "${fontFile}[32-$((CHARS_PER_FONT + 32 - 1))]" -scene $((256 - CHARS_PER_FONT)) -rotate 270 -crop $charSize $fontDir/part-%03d.xbm
+    convert "${fontFile}" -scene $((256 - CHARS_PER_FONT)) -rotate 270 -crop $charSize $fontDir/part-%03d.xbm
     let ret=$?
     
     if [ $ret -eq 0 ]; then

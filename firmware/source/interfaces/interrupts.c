@@ -2,9 +2,9 @@
  * Copyright (C)2020 Roger Clark VK3KYY
  *
  */
-#include <gpio.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "interfaces/gpio.h"
 
 void interruptsInitC6000Interface(void)
 {

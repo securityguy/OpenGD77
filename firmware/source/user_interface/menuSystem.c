@@ -15,247 +15,298 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiLocalisation.h>
-#include <user_interface/uiUtilities.h>
-#include <settings.h>
-#include <ticks.h>
-
-int menuDisplayLightTimer = -1;
-
-menuItemNewData_t *gMenuCurrentMenuList;
-int gMenusCurrentItemIndex; // each menu can re-use this var to hold the position in their display list. To save wasted memory if they each had their own variable
-int gMenusStartIndex;// as above
-int gMenusEndIndex;// as above
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiLocalisation.h"
+#include "user_interface/uiUtilities.h"
+#include "functions/settings.h"
+#include "functions/ticks.h"
 
 
-menuControlDataStruct_t menuControlData = { .stackPosition = 0, .stack = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}, .itemIndex = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0}};
+menuDataGlobal_t menuDataGlobal =
+{
+		.currentItemIndex 		= 0, // each menu can re-use this var to hold the position in their display list. To save wasted memory if they each had their own variable
+		.startIndex 			= 0, // as above
+		.endIndex 				= 0, // as above
+		.lightTimer 			= -1,
+		.currentMenuList		= NULL,
 
+		.controlData =
+		{
+				.stackPosition 	= 0,
+				.stack 			=
+				{
+						MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY, MENU_EMPTY
+				}
+		},
 
-/*
- * ---------------------- IMPORTANT ----------------------------
- *
- * The menuFunctions array and the menusData array.....
- *
- * MUST match the enum MENU_SCREENS in menuSystem.h
- *
- * ---------------------- IMPORTANT ----------------------------
- */
-const menuItemsList_t * menusData[] = {	NULL,// splash
-										NULL,// power off
-										NULL,// vfo mode
-										NULL,// channel mode
-										&menuDataMainMenu,
-										&menuDataContact,
-										NULL,// zone
-										NULL,// Battery
-										NULL,// Firmwareinfo
-										NULL,// Numerical entry
-										NULL,// Tx
-										NULL,// RSSI
-										NULL,// LastHeard
-										NULL,// Options
-										NULL,// Display options
-										NULL,// Sound options
-										NULL,// Credits
-										NULL,// Channel Details
-										NULL,// hotspot mode
-										NULL,// CPS
-										NULL,// Quick menu - Channel
-										NULL,// Quick menu - VFO
-										NULL,// Lock screen
-										NULL,// Contact List
-										NULL,// DTMF Contact List
-										NULL,// Contact Quick List (SK2+#)
-										NULL,// Contact List Quick Menu
-										NULL,// Contact Details
-										NULL,// New Contact
-										NULL,// Language
-										NULL,// Private Call
-								};
+		/*
+		 * ---------------------- IMPORTANT ----------------------------
+		 *
+		 * The menuFunctions array and the menusData array.....
+		 *
+		 * MUST match the enum MENU_SCREENS in menuSystem.h
+		 *
+		 * ---------------------- IMPORTANT ----------------------------
+		 */
+		.data 					=
+		{
+				NULL,// splash
+				NULL,// power off
+				NULL,// vfo mode
+				NULL,// channel mode
+				&menuDataMainMenu,
+				&menuDataContact,
+				NULL,// zone
+				NULL,// Battery
+				NULL,// Firmwareinfo
+				NULL,// Numerical entry
+				NULL,// Tx
+				NULL,// RSSI
+				NULL,// LastHeard
+				NULL,// Options
+				NULL,// Display options
+				NULL,// Sound options
+				NULL,// Credits
+				NULL,// Channel Details
+				NULL,// hotspot mode
+				NULL,// CPS
+				NULL,// Quick menu - Channel
+				NULL,// Quick menu - VFO
+				NULL,// Lock screen
+				NULL,// Contact List
+				NULL,// DTMF Contact List
+				NULL,// Contact Quick List (SK2+#)
+				NULL,// Contact List Quick Menu
+				NULL,// Contact Details
+				NULL,// New Contact
+				NULL,// Language
+				NULL,// Private Call
+				NULL,// MessageBox
+		}
+};
 
-const menuFunctionPointer_t menuFunctions[] = { uiSplashScreen,
-												uiPowerOff,
-												uiVFOMode,
-												uiChannelMode,
-												menuDisplayMenuList,// display Main menu using the menu display system
-												menuDisplayMenuList,// display Contact menu using the menu display system
-												menuZoneList,
-												menuBattery,
-												menuFirmwareInfoScreen,
-												menuNumericalEntry,
-												menuTxScreen,
-												menuRSSIScreen,
-												menuLastHeard,
-												menuOptions,
-												menuDisplayOptions,
-												menuSoundOptions,
-												menuCredits,
-												menuChannelDetails,
-												menuHotspotMode,
-												uiCPS,
-												uiChannelModeQuickMenu,
-												uiVFOModeQuickMenu,
-												menuLockScreen,
-												menuContactList,
-												menuContactList,
-												menuContactList,
-												menuContactListSubMenu,
-												menuContactDetails,
-												menuContactDetails,
-												menuLanguage,
-												menuPrivateCall
+static menuFunctionData_t menuFunctions[] =
+{
+		{ uiSplashScreen,           0 },
+		{ uiPowerOff,               0 },
+		{ uiVFOMode,                0 },
+		{ uiChannelMode,            0 },
+		{ menuDisplayMenuList,      0 },// display Main menu using the menu display system
+		{ menuDisplayMenuList,      0 },// display Contact menu using the menu display system
+		{ menuZoneList,             0 },
+		{ menuRadioInfos,           0 },
+		{ menuFirmwareInfoScreen,   0 },
+		{ menuNumericalEntry,       0 },
+		{ menuTxScreen,             0 },
+		{ menuRSSIScreen,           0 },
+		{ menuLastHeard,            0 },
+		{ menuOptions,              0 },
+		{ menuDisplayOptions,       0 },
+		{ menuSoundOptions,         0 },
+		{ menuCredits,              0 },
+		{ menuChannelDetails,       0 },
+		{ menuHotspotMode,          0 },
+		{ uiCPS,                    0 },
+		{ uiChannelModeQuickMenu,   0 },
+		{ uiVFOModeQuickMenu,       0 },
+		{ menuLockScreen,           0 },
+		{ menuContactList,          0 },
+		{ menuContactList,          0 },
+		{ menuContactList,          0 },
+		{ menuContactListSubMenu,   0 },
+		{ menuContactDetails,       0 },
+		{ menuContactDetails,       0 },
+		{ menuLanguage,             0 },
+		{ menuPrivateCall,          0 },
+		{ uiMessageBox,             0 }
 };
 
 static void menuSystemCheckForFirstEntryAudible(menuStatus_t status)
 {
 	if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_BEEP)
 	{
-		 if (((status & MENU_STATUS_LIST_TYPE) && (gMenusCurrentItemIndex == 0)) || (status & MENU_STATUS_FORCE_FIRST))
-		 {
-			 nextKeyBeepMelody = (int *)MELODY_KEY_BEEP_FIRST_ITEM;
-		 }
-		 else if (status & MENU_STATUS_INPUT_TYPE)
-		 {
-			 nextKeyBeepMelody = (int *)MELODY_ACK_BEEP;
-		 }
+		if (status & MENU_STATUS_ERROR)
+		{
+			nextKeyBeepMelody = (int *)MELODY_ERROR_BEEP;
+		}
+		else if (((status & MENU_STATUS_LIST_TYPE) && (menuDataGlobal.currentItemIndex == 0)) || (status & MENU_STATUS_FORCE_FIRST))
+		{
+			nextKeyBeepMelody = (int *)MELODY_KEY_BEEP_FIRST_ITEM;
+		}
+		else if (status & MENU_STATUS_INPUT_TYPE)
+		{
+			nextKeyBeepMelody = (int *)MELODY_ACK_BEEP;
+		}
 	}
+}
+
+static void menuSystemPushMenuFirstRun(void)
+{
+	uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
+	menuStatus_t status;
+
+	// Due to QuickKeys, menu list won't go through menuDisplayMenuList() first, so those
+	// two members won't get always initialized. Hence, we need to tag them as uninitialized,
+	// and check if they got initialized after entering a menu.
+	menuDataGlobal.endIndex = INT32_MIN;
+	menuDataGlobal.currentMenuList = NULL;
+	menuDataGlobal.currentItemIndex = menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].lastItemIndex;
+	displayLightTrigger(false);
+	status = menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].function(&ev, true);
+
+	if (menuDataGlobal.endIndex == INT32_MIN)
+	{
+		menuDataGlobal.endIndex = ((menuDataGlobal.data[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]] != NULL) ? menuDataGlobal.data[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]]->numItems : 0);
+	}
+
+	if (menuDataGlobal.currentMenuList == NULL)
+	{
+		menuDataGlobal.currentMenuList = ((menuDataGlobal.data[menuDataGlobal.controlData.stackPosition] != NULL) ? (menuItemNewData_t *)menuDataGlobal.data[menuDataGlobal.controlData.stackPosition]->items : NULL);
+	}
+
+	if (menuDataGlobal.currentItemIndex > menuDataGlobal.endIndex)
+	{
+		menuDataGlobal.currentItemIndex = 0;
+	}
+	menuSystemCheckForFirstEntryAudible(status);
 }
 
 void menuSystemPushNewMenu(int menuNumber)
 {
-	if (menuControlData.stackPosition < 15)
+	if (menuDataGlobal.controlData.stackPosition < 15)
 	{
-		uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
-		menuStatus_t status;
-
 		keyboardReset();
-		menuControlData.itemIndex[menuControlData.stackPosition] = gMenusCurrentItemIndex;
-		menuControlData.stackPosition++;
-		menuControlData.stack[menuControlData.stackPosition] = menuNumber;
-		gMenusCurrentItemIndex = 0;
-		status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);
-		menuSystemCheckForFirstEntryAudible(status);
+		menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].lastItemIndex = menuDataGlobal.currentItemIndex;
+		menuDataGlobal.controlData.stackPosition++;
+		menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition] = menuNumber;
+		menuSystemPushMenuFirstRun();
 	}
 }
-
-#if 0 // Unused
-void menuSystemPushNewMenuWithQuickFunction(int menuNumber, int quickFunction)
-{
-	if (menuControlData.stackPosition < 15)
-	{
-		uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = quickFunction, .events = FUNCTION_EVENT, .hasEvent = false, .time = fw_millis() };
-		menuStatus_t status;
-
-		keyboardReset();
-		menuControlData.itemIndex[menuControlData.stackPosition] = gMenusCurrentItemIndex;
-		menuControlData.stackPosition++;
-		menuControlData.stack[menuControlData.stackPosition] = menuNumber;
-		gMenusCurrentItemIndex = 0;
-		status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);
-		menuSystemCheckForFirstEntryAudible(status);
-	}
-}
-#endif
 
 void menuSystemPopPreviousMenu(void)
 {
-	uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
-	menuStatus_t status;
-
 	keyboardReset();
-	menuControlData.itemIndex[menuControlData.stackPosition] = 0;
-	menuControlData.stackPosition -= (menuControlData.stackPosition > 0) ? 1 : 0; // Avoid crashing if something goes wrong.
-	gMenusCurrentItemIndex = menuControlData.itemIndex[menuControlData.stackPosition];
-	status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);
-	menuSystemCheckForFirstEntryAudible(status);
+	menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].lastItemIndex = menuDataGlobal.currentItemIndex;
+	// Clear stackPosition + 1 menu trace
+	if (menuDataGlobal.controlData.stackPosition < 15)
+	{
+		menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition + 1] = MENU_EMPTY;
+	}
+
+	// Avoid crashing if something goes wrong.
+	if (menuDataGlobal.controlData.stackPosition > 0)
+	{
+		menuDataGlobal.controlData.stackPosition -= 1;
+	}
+	menuSystemPushMenuFirstRun();
 }
 
 void menuSystemPopAllAndDisplayRootMenu(void)
 {
-	uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
-	menuStatus_t status;
-
 	keyboardReset();
-	memset(menuControlData.itemIndex, 0, sizeof(menuControlData.itemIndex));
-	menuControlData.stackPosition = 0;
-	gMenusCurrentItemIndex = 0;
-	status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);
-	menuSystemCheckForFirstEntryAudible(status);
-
+	menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].lastItemIndex = menuDataGlobal.currentItemIndex;
+	// MENU_EMPTY is equal to -1 (0xFFFFFFFF), hence the following works, even if it's an int32_t array
+	memset(&menuDataGlobal.controlData.stack[1], MENU_EMPTY, sizeof(menuDataGlobal.controlData.stack) - sizeof(int));
+	menuDataGlobal.controlData.stackPosition = 0;
+	menuSystemPushMenuFirstRun();
 }
 
 void menuSystemPopAllAndDisplaySpecificRootMenu(int newRootMenu, bool resetKeyboard)
 {
-	uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
-	menuStatus_t status;
-
 	if (resetKeyboard)
 	{
 		keyboardReset();
 	}
-	memset(menuControlData.itemIndex, 0, sizeof(menuControlData.itemIndex));
-	menuControlData.stack[0]  = newRootMenu;
-	menuControlData.stackPosition = 0;
-	gMenusCurrentItemIndex = 0;
-	status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);
-	menuSystemCheckForFirstEntryAudible(status);
+	menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].lastItemIndex = menuDataGlobal.currentItemIndex;
+	// MENU_EMPTY is equal to -1 (0xFFFFFFFF), hence the following works, even if it's an int32_t array
+	memset(&menuDataGlobal.controlData.stack[1], MENU_EMPTY, sizeof(menuDataGlobal.controlData.stack) - sizeof(int));
+	menuDataGlobal.controlData.stack[0] = newRootMenu;
+	menuDataGlobal.controlData.stackPosition = 0;
+	menuSystemPushMenuFirstRun();
 }
 
 void menuSystemSetCurrentMenu(int menuNumber)
 {
-	uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
-	menuStatus_t status;
-
 	keyboardReset();
-	menuControlData.stack[menuControlData.stackPosition] = menuNumber;
-	gMenusCurrentItemIndex = menuControlData.itemIndex[menuControlData.stackPosition];
-	status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);
-	menuSystemCheckForFirstEntryAudible(status);
+	menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition] = menuNumber;
+	menuSystemPushMenuFirstRun();
 }
 
 int menuSystemGetCurrentMenuNumber(void)
 {
-	return menuControlData.stack[menuControlData.stackPosition];
+	return menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition];
 }
 
 int menuSystemGetPreviousMenuNumber(void)
 {
-	if (menuControlData.stackPosition >= 1)
+	if (menuDataGlobal.controlData.stackPosition >= 1)
 	{
-		return menuControlData.stack[menuControlData.stackPosition - 1];
+		return menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition - 1];
 	}
 
 	return -1;
 }
 
-int menuSystemGetRootMenuNumber(void)
+int menuSystemGetPreviouslyPushedMenuNumber(void)
 {
-	return menuControlData.stack[0];
+	if (menuDataGlobal.controlData.stackPosition < 15)
+	{
+		int m = menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition + 1];
+		menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition + 1] = MENU_EMPTY;
+		return m;
+	}
+
+	return MENU_EMPTY;
 }
 
+int menuSystemGetRootMenuNumber(void)
+{
+	return menuDataGlobal.controlData.stack[0];
+}
+
+static void menuSystemPreProcessEvent(uiEvent_t *ev)
+{
+	if (ev->hasEvent || ((uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA) && (nonVolatileSettings.backlightMode != BACKLIGHT_MODE_BUTTONS)) )
+	{
+		displayLightTrigger(true);
+	}
+}
+
+static void menuSystemPostProcessEvent(uiEvent_t *ev)
+{
+	if (uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA)
+	{
+		uiDataGlobal.displayQSOState = QSO_DISPLAY_IDLE;
+	}
+}
 
 void menuSystemCallCurrentMenuTick(uiEvent_t *ev)
 {
 	menuStatus_t status;
 
-	status = menuFunctions[menuControlData.stack[menuControlData.stackPosition]](ev, false);
+	menuSystemPreProcessEvent(ev);
+	status = menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].function(ev, false);
+	menuSystemPostProcessEvent(ev);
 	if (ev->hasEvent)
 	{
 		menuSystemCheckForFirstEntryAudible(status);
 	}
 }
 
-void displayLightTrigger(void)
+void displayLightTrigger(bool fromKeyEvent)
 {
 	if ((menuSystemGetCurrentMenuNumber() != UI_TX_SCREEN) &&
 			(((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_AUTO) || (nonVolatileSettings.backlightMode == BACKLIGHT_MODE_SQUELCH))
-					|| ((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_MANUAL) && displayIsBacklightLit())))
+					|| ((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_MANUAL) && displayIsBacklightLit())
+					|| ((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_BUTTONS) && fromKeyEvent)))
 	{
-		if ((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_AUTO) || (nonVolatileSettings.backlightMode == BACKLIGHT_MODE_SQUELCH))
+		if ((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_AUTO) ||
+				(nonVolatileSettings.backlightMode == BACKLIGHT_MODE_SQUELCH) ||
+				(nonVolatileSettings.backlightMode == BACKLIGHT_MODE_BUTTONS))
 		{
-			menuDisplayLightTimer = nonVolatileSettings.backLightTimeout * 1000;
+			menuDataGlobal.lightTimer = nonVolatileSettings.backLightTimeout * 1000;
 		}
+
 		displayEnableBacklight(true);
 	}
 }
@@ -263,9 +314,9 @@ void displayLightTrigger(void)
 // use -1 to force LED on all the time
 void displayLightOverrideTimeout(int timeout)
 {
-	int prevTimer = menuDisplayLightTimer;
+	int prevTimer = menuDataGlobal.lightTimer;
 
-	menuDisplayLightTimer = timeout;
+	menuDataGlobal.lightTimer = timeout;
 
 	if ((nonVolatileSettings.backlightMode == BACKLIGHT_MODE_AUTO) || (nonVolatileSettings.backlightMode == BACKLIGHT_MODE_SQUELCH))
 	{
@@ -277,36 +328,40 @@ void displayLightOverrideTimeout(int timeout)
 	}
 }
 
-void menuInitMenuSystem(void)
+void menuSystemInit(void)
 {
 	uiEvent_t ev = { .buttons = 0, .keys = NO_KEYCODE, .rotary = 0, .function = 0, .events = NO_EVENT, .hasEvent = false, .time = fw_millis() };
 
-	menuDisplayLightTimer = -1;
-	menuControlData.stack[menuControlData.stackPosition] = UI_SPLASH_SCREEN;// set the very first screen as the splash screen
-	gMenusCurrentItemIndex = 0;
-	menuFunctions[menuControlData.stack[menuControlData.stackPosition]](&ev, true);// Init and display this screen
+	menuDataGlobal.lightTimer = -1;
+	menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition] = UI_SPLASH_SCREEN;// set the very first screen as the splash screen
+	menuDataGlobal.currentItemIndex = 0;
+	displayLightTrigger(false);
+	menuFunctions[menuDataGlobal.controlData.stack[menuDataGlobal.controlData.stackPosition]].function(&ev, true);// Init and display this screen
 }
 
 void menuSystemLanguageHasChanged(void)
 {
 	// Force full update of menuChannelMode() on next call (if isFirstRun arg. is true)
-	uiChannelModeColdStart();
+	if (menuSystemGetRootMenuNumber() == UI_CHANNEL_MODE)
+	{
+		uiChannelModeColdStart();
+	}
 }
 
 const menuItemNewData_t mainMenuItems[] =
 {
-	{ 3,  MENU_ZONE_LIST },
-	{ 4,  MENU_RSSI_SCREEN },
-	{ 5,  MENU_BATTERY },
-	{ 6,  MENU_CONTACTS_MENU },
-	{ 7,  MENU_LAST_HEARD },
-	{ 8,  MENU_FIRMWARE_INFO },
-	{ 9,  MENU_OPTIONS },
-	{ 10, MENU_DISPLAY },
-	{ 11, MENU_SOUND },
-	{ 12, MENU_CHANNEL_DETAILS},
-	{ 13, MENU_LANGUAGE},
-	{ 2,  MENU_CREDITS },
+	{   3, MENU_ZONE_LIST       },
+	{   4, MENU_RSSI_SCREEN     },
+	{ 150, MENU_RADIO_INFOS     },
+	{   6, MENU_CONTACTS_MENU   },
+	{   7, MENU_LAST_HEARD      },
+	{   8, MENU_FIRMWARE_INFO   },
+	{   9, MENU_OPTIONS         },
+	{  10, MENU_DISPLAY         },
+	{  11, MENU_SOUND           },
+	{  12, MENU_CHANNEL_DETAILS },
+	{  13, MENU_LANGUAGE        },
+	{   2, MENU_CREDITS         },
 };
 
 const menuItemsList_t menuDataMainMenu =
@@ -315,17 +370,17 @@ const menuItemsList_t menuDataMainMenu =
 	.items = mainMenuItems
 };
 
-const menuItemNewData_t contractMenuItems[] =
+static const menuItemNewData_t contactMenuItems[] =
 {
-	{ 15, MENU_CONTACT_LIST      },
+	{ 15,  MENU_CONTACT_LIST      },
 	{ 139, MENU_DTMF_CONTACT_LIST },
-	{ 14, MENU_CONTACT_NEW       },
+	{ 14,  MENU_CONTACT_NEW       },
 };
 
 const menuItemsList_t menuDataContact =
 {
 	.numItems = 3,
-	.items = contractMenuItems
+	.items = contactMenuItems
 };
 
 void menuDisplayTitle(const char *title)
@@ -334,32 +389,22 @@ void menuDisplayTitle(const char *title)
 	ucPrintCore(0, 3, title, FONT_SIZE_2, TEXT_ALIGN_CENTER, false);
 }
 
-void menuDisplayEntry(int loopOffset, int focusedItem,const char *entryText)
+void menuDisplayEntry(int loopOffset, int focusedItem, const char *entryText)
 {
-#if defined(PLATFORM_RD5R)
-	const int MENU_START_Y = 25;
-	const int HIGHLIGHT_START_Y = 24;
-	const int MENU_SPACING_Y = FONT_SIZE_3_HEIGHT+2;
-#else
-	const int MENU_START_Y = 32;
-	const int HIGHLIGHT_START_Y = 32;
-	const int MENU_SPACING_Y = FONT_SIZE_3_HEIGHT;
-#endif
-
-	bool focused = (focusedItem == gMenusCurrentItemIndex);
+	bool focused = (focusedItem == menuDataGlobal.currentItemIndex);
 
 	if (focused)
 	{
-		ucFillRoundRect(0, HIGHLIGHT_START_Y +  (loopOffset * MENU_SPACING_Y), DISPLAY_SIZE_X, MENU_SPACING_Y, 2, true);
+		ucFillRoundRect(0, DISPLAY_Y_POS_MENU_ENTRY_HIGHLIGHT + (loopOffset * MENU_ENTRY_HEIGHT), DISPLAY_SIZE_X, MENU_ENTRY_HEIGHT, 2, true);
 	}
 
-	ucPrintCore(0, MENU_START_Y + (loopOffset * MENU_SPACING_Y), entryText, FONT_SIZE_3, TEXT_ALIGN_LEFT, focused);
+	ucPrintCore(0, DISPLAY_Y_POS_MENU_START + (loopOffset * MENU_ENTRY_HEIGHT), entryText, FONT_SIZE_3, TEXT_ALIGN_LEFT, focused);
 
 }
 
 int menuGetMenuOffset(int maxMenuEntries, int loopOffset)
 {
-	int offset = gMenusCurrentItemIndex + loopOffset;
+	int offset = menuDataGlobal.currentItemIndex + loopOffset;
 
 	if (offset < 0)
 	{
@@ -498,3 +543,24 @@ void menuSystemMenuDecrement(int32_t *currentItem, int32_t numItems)
 {
 	*currentItem = (*currentItem + numItems - 1) % numItems;
 }
+
+// For QuickKeys
+void menuDisplaySettingOption(const char *entryText, const char *valueText)
+{
+
+#if defined(PLATFORM_RD5R)
+	ucDrawRoundRect(2, DISPLAY_Y_POS_MENU_ENTRY_HIGHLIGHT - MENU_ENTRY_HEIGHT - 6, DISPLAY_SIZE_X - 4, (MENU_ENTRY_HEIGHT * 2) + 8, 2, true);
+	ucFillRoundRect(2, DISPLAY_Y_POS_MENU_ENTRY_HIGHLIGHT - MENU_ENTRY_HEIGHT - 6, DISPLAY_SIZE_X - 4, MENU_ENTRY_HEIGHT + 3, 2, true);
+
+	ucPrintCore(0, DISPLAY_Y_POS_MENU_START - MENU_ENTRY_HEIGHT - 4, entryText, FONT_SIZE_2, TEXT_ALIGN_CENTER, true);
+#else
+	ucDrawRoundRect(2, DISPLAY_Y_POS_MENU_ENTRY_HIGHLIGHT - MENU_ENTRY_HEIGHT - 2, DISPLAY_SIZE_X - 4, (MENU_ENTRY_HEIGHT * 2) + 4, 2, true);
+	ucFillRoundRect(2, DISPLAY_Y_POS_MENU_ENTRY_HIGHLIGHT - MENU_ENTRY_HEIGHT - 2, DISPLAY_SIZE_X - 4, MENU_ENTRY_HEIGHT, 2, true);
+
+	ucPrintCore(0, DISPLAY_Y_POS_MENU_START - MENU_ENTRY_HEIGHT + 2, entryText, FONT_SIZE_2, TEXT_ALIGN_CENTER, true);
+#endif
+
+	ucPrintCore(0, DISPLAY_Y_POS_MENU_START, valueText, FONT_SIZE_3, TEXT_ALIGN_CENTER, false);
+}
+
+

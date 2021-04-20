@@ -3,7 +3,7 @@
  *
  */
 
-#include <gpio.h>
+#include "interfaces/gpio.h"
 
 gpio_pin_config_t pin_config_input =
 {
@@ -115,7 +115,10 @@ void gpioInitDisplay()
 	ftmParam.firstEdgeDelayPercent = 0U;
 	FTM_GetDefaultConfig(&ftmInfo);
 	FTM_Init(BOARD_FTM_BASEADDR, &ftmInfo);/* Initialize FTM module */
-	FTM_SetupPwm(BOARD_FTM_BASEADDR, &ftmParam, 1U, kFTM_CenterAlignedPwm, 10000U, CLOCK_GetFreq(kCLOCK_BusClk));   /* Configure ftm params with frequency 10kHZ */
+	/* Configure ftm params with frequency 25kHz
+	 * Because a lower clock speed is used during Rx, the speed during Rx will be approximately 10kHz
+	 */
+	FTM_SetupPwm(BOARD_FTM_BASEADDR, &ftmParam, 1U, kFTM_CenterAlignedPwm, 25000U, CLOCK_GetFreq(kCLOCK_BusClk));
 	FTM_StartTimer(BOARD_FTM_BASEADDR, kFTM_SystemClock);
 
 #else // ! DISPLAY_LED_PWM

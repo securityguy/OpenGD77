@@ -18,8 +18,8 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _DMRDefines_H
-#define	_DMRDefines_H
+#ifndef _OPENGD77_DMRDEFINES_H_
+#define	_OPENGD77_DMRDEFINES_H_
 
 #include <stdbool.h>
 #include <stdint.h>

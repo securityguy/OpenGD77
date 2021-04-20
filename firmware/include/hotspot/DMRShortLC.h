@@ -16,8 +16,8 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _DMR_DMRSHORTLC_H_
-#define _DMR_DMRSHORTLC_H_
+#ifndef _OPENGD77_DMRSHORTLC_H_
+#define _OPENGD77_DMRSHORTLC_H_
 
 #include "hotspot/dmrDefines.h"
 #include "hotspot/DMRLC.h"

@@ -18,11 +18,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <hotspot/BPTC19696.h>
-#include <hotspot/dmrDefines.h>
-#include <hotspot/dmrUtils.h>
-#include <hotspot/DMRFullLC.h>
-#include <hotspot/RS129.h>
+#include "hotspot/BPTC19696.h"
+#include "hotspot/dmrDefines.h"
+#include "hotspot/dmrUtils.h"
+#include "hotspot/DMRFullLC.h"
+#include "hotspot/RS129.h"
 
 
 bool DMRFullLC_decode(const unsigned char *data, unsigned char type, DMRLC_T *lc)

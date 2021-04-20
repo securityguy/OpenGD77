@@ -93,6 +93,7 @@ namespace GD77_FirmwareLoader
 			this.Activated -= PostActivated;
 
 			this.Activate();
+			this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
 		}
 
 		public MainForm()
@@ -300,82 +301,14 @@ namespace GD77_FirmwareLoader
 			}
 
 			String result = ev.Result;
-			String urlBase = "http://github.com";
-			String urlFW = "";
-			String patternR = "", patternD = "";
-			String releaseURL = "", develURL = "";
 
 			this.progressBar.Visible = false;
 
-			// Looking for firmware's URL
-			String[] lines = result.Split('\n');
-
-			downloadedGetReleaseAndDevelURLs(lines, ref releaseURL, ref develURL);
-
-			// Is firmware's URL found ?
-			if ((releaseURL.Length > 0) || (develURL.Length > 0))
+			FirmwareLoaderReleasesList flrl = new FirmwareLoaderReleasesList(result);
+			if (DialogResult.Cancel != flrl.ShowDialog())
 			{
-				String message;
-				String[] buttonsLabel = new String[2];
 
-				buttonsLabel[0] = "&Stable ";
-				buttonsLabel[1] = "&Unstable ";
-
-				// Extract release version
-				patternR = @"/R([0-9\.]+)/";
-				patternD = @"/D([0-9\.]+)/";
-
-				Match matchR = Regex.Match(releaseURL, patternR, RegexOptions.IgnoreCase);
-				Match matchD = Regex.Match(develURL, patternD, RegexOptions.IgnoreCase);
-
-				if (matchR.Success && (releaseURL.Length > 0))
-				{
-					buttonsLabel[0] += matchR.Groups[0].Value.Trim('/').Remove(0, 1);
-				}
-				else
-				{
-					buttonsLabel[0] = "";
-				}
-
-				if (matchD.Success && (develURL.Length > 0))
-				{
-					buttonsLabel[1] += matchD.Groups[0].Value.Trim('/').Remove(0, 1);
-				}
-				else
-				{
-					buttonsLabel[1] = "";
-				}
-
-				if ((releaseURL.Length > 0) && (develURL.Length > 0))
-				{
-					message = "It will download and install a firmware.\n\nPlease choose between Stable and Development version.";
-				}
-				else
-				{
-					message = "It will download and install a firmware.\n\nPlease make you choice.";
-				}
-
-				DialogResult res = DialogBox("Question", message, buttonsLabel[0], buttonsLabel[1]);
-
-				switch (res)
-				{
-					case DialogResult.Yes:
-						// Stable
-						Console.WriteLine("STABLE");
-						urlFW = releaseURL;
-						break;
-
-					case DialogResult.No:
-						// Devel
-						Console.WriteLine("UNSTABLE");
-						urlFW = develURL;
-						break;
-
-					case DialogResult.Cancel:
-						enableUI(true);
-						return;
-				}
-
+				tempFile = System.IO.Path.GetTempPath() + Guid.NewGuid().ToString() + ".sgl";
 				tempFile = System.IO.Path.GetTempPath() + Guid.NewGuid().ToString() + ".sgl";
 
 				// Download the firmware binary to a temporary file
@@ -384,7 +317,7 @@ namespace GD77_FirmwareLoader
 					Application.DoEvents();
 					this.progressBar.Value = 0;
 					this.progressBar.Visible = true;
-					wc.DownloadFileAsync(new Uri(urlBase + urlFW), tempFile);
+					wc.DownloadFileAsync(new Uri(flrl.SelectedURL), tempFile);
 				}
 				catch (Exception ex)
 				{
@@ -397,10 +330,10 @@ namespace GD77_FirmwareLoader
 					this.progressBar.Visible = false;
 					return;
 				}
+
 			}
 			else
 			{
-				MessageBox.Show(String.Format("Error: unable to find a firmware for your {0} transceiver.", FirmwareLoader.getModelName()), "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
 				enableUI(true);
 			}
 		}
@@ -472,9 +405,13 @@ namespace GD77_FirmwareLoader
 
 		private void btnDownload_Click(object sender, EventArgs e)
 		{
-			Uri uri = new Uri("https://github.com/rogerclarkmelbourne/OpenGD77/releases");
+			Uri uri = new Uri("https://api.github.com/repos/rogerclarkmelbourne/opengd77/releases");//https://github.com/rogerclarkmelbourne/OpenGD77/releases");
 
 			wc = new WebClientAsync(40);
+			wc.Headers.Add(HttpRequestHeader.Accept, "application/json");
+			wc.Headers.Add(HttpRequestHeader.ContentType, "application/json");
+			wc.Headers.Add(HttpRequestHeader.UserAgent, "request");
+
 			ServicePointManager.SecurityProtocol = SecurityProtocolType.Ssl3 | SecurityProtocolType.Tls | SecurityProtocolType.Tls11 | SecurityProtocolType.Tls12;
 
 			this.progressBar.Value = 0;

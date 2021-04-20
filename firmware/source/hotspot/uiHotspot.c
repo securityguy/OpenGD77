@@ -17,22 +17,28 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <calibration.h>
-#include <hotspot/uiHotspot.h>
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiUtilities.h>
 #include <ctype.h>
-#include <hotspot/DMREmbeddedData.h>
-#include <hotspot/DMRFullLC.h>
-#include <hotspot/DMRShortLC.h>
-#include <hotspot/DMRSlotType.h>
-#include <hotspot/QR1676.h>
-#include <HR-C6000.h>
-#include <settings.h>
-#include <sound.h>
-#include <ticks.h>
-#include <trx.h>
-#include <usb_com.h>
+#include "functions/calibration.h"
+#include "hotspot/uiHotspot.h"
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiUtilities.h"
+#include "user_interface/uiLocalisation.h"
+#include "hotspot/DMREmbeddedData.h"
+#include "hotspot/DMRFullLC.h"
+#include "hotspot/DMRShortLC.h"
+#include "hotspot/DMRSlotType.h"
+#include "hotspot/QR1676.h"
+#include "hardware/HR-C6000.h"
+#include "functions/settings.h"
+#include "functions/sound.h"
+#include "functions/ticks.h"
+#include "functions/trx.h"
+#include "usb/usb_com.h"
+#include "functions/rxPowerSaving.h"
+
+// Uncomment the following to enable demo screen, access it with function events
+//#define DEMO_SCREEN
+
 /*
                                 Problems with MD-390 on the same frequency
                                 ------------------------------------------
@@ -125,7 +131,7 @@ M: 2020-01-07 09:52:15.246 DMR Slot 2, received network end of voice transmissio
 
 #define MMDVM_HEADER_LENGTH 4U
 
-#define HOTSPOT_VERSION_STRING "OpenGD77_HS v0.1.4"
+#define HOTSPOT_VERSION_STRING "OpenGD77_HS v0.1.6"
 #define concat(a, b) a " GitID #" b ""
 static const char HARDWARE[] = concat(HOTSPOT_VERSION_STRING, GITVERSION);
 
@@ -167,6 +173,7 @@ static uint8_t lastRxState = HOTSPOT_RX_IDLE;
 static const int TX_BUFFERING_TIMEOUT = 5000;// 500mS
 
 static int timeoutCounter;
+static uint8_t savedLibreDMR_Power;
 static int savedPowerLevel = -1;// no power level saved yet
 static int hotspotPowerLevel = 0;// no power level saved yet
 
@@ -334,11 +341,16 @@ static void sendDebug4(const char *text, int16_t n1, int16_t n2, int16_t n3);
 static void sendDebug5(const char *text, int16_t n1, int16_t n2, int16_t n3, int16_t n4);
 #endif
 
+#if defined(DEMO_SCREEN)
+bool demoScreen = false;
+#endif
 
 menuStatus_t menuHotspotMode(uiEvent_t *ev, bool isFirstRun)
 {
 	if (isFirstRun)
 	{
+		rxPowerSavingSetLevel(0);// disable power saving
+
 		// DMR filter level isn't saved yet (cycling power OFF/ON quickly can corrupt
 		// this value otherwise, as menuHotspotMode(true) could be called twice.
 		if (savedDMRDestinationFilter == 0xFF)
@@ -351,6 +363,10 @@ menuStatus_t menuHotspotMode(uiEvent_t *ev, bool isFirstRun)
 		}
 
 		hotspotState = HOTSPOT_STATE_NOT_CONNECTED;
+
+		// Do not user per channel power settings
+		savedLibreDMR_Power = currentChannelData->libreDMR_Power;
+		currentChannelData->libreDMR_Power = 0;
 
 		savedTGorPC = trxTalkGroupOrPcId;// Save the current TG or PC
 		trxTalkGroupOrPcId = 0;
@@ -401,7 +417,7 @@ menuStatus_t menuHotspotMode(uiEvent_t *ev, bool isFirstRun)
 
 		if (trxCheckFrequencyInAmateurBand(freq_rx) && trxCheckFrequencyInAmateurBand(freq_tx))
 		{
-			trxSetFrequency(freq_rx, freq_tx, DMR_MODE_ACTIVE);
+			trxSetFrequency(freq_rx, freq_tx, DMR_MODE_DMO);
 		}
 
 		if (rf_power != 255)
@@ -424,13 +440,13 @@ menuStatus_t menuHotspotMode(uiEvent_t *ev, bool isFirstRun)
 		ucPrintCentered(48, "Pi-Star", FONT_SIZE_3);
 		ucRender();
 
-		displayLightTrigger();
+		displayLightTrigger(false);
 	}
 	else
 	{
 
 #if defined(PLATFORM_GD77S)
-		heartBeatActivityForGD77S(ev);
+		uiChannelModeHeartBeatActivityForGD77S(ev);
 #endif
 
 		if (ev->hasEvent)
@@ -442,22 +458,29 @@ menuStatus_t menuHotspotMode(uiEvent_t *ev, bool isFirstRun)
 		}
 	}
 
-	processUSBDataQueue();
-	if (com_request == 1)
+#if defined(DEMO_SCREEN)
+	if (! demoScreen)
 	{
-		handleHotspotRequest();
-		com_request = 0;
-	}
-	hotspotStateMachine();
-
-	// CW beaconing
-	if (cwKeying)
-	{
-		if (cwpoLen > 0U)
+#endif
+		processUSBDataQueue();
+		if (com_request == 1)
 		{
-			cwProcess();
+			handleHotspotRequest();
+			com_request = 0;
 		}
+		hotspotStateMachine();
+
+		// CW beaconing
+		if (cwKeying)
+		{
+			if (cwpoLen > 0U)
+			{
+				cwProcess();
+			}
+		}
+#if defined(DEMO_SCREEN)
 	}
+#endif
 
 	return MENU_STATUS_SUCCESS;
 }
@@ -559,7 +582,6 @@ static void updateScreen(uint8_t rxCommandState)
 	ucPrintCentered(0, "Hotspot", FONT_SIZE_3);
 
 	snprintf(buffer, bufferLen, "%d%%", getBatteryPercentage());
-	buffer[bufferLen - 1] = 0;
 
 	ucPrintAt(DISPLAY_SIZE_X - (strlen(buffer) * 6) - 4, 4, buffer, FONT_SIZE_1);
 
@@ -568,7 +590,6 @@ static void updateScreen(uint8_t rxCommandState)
 		if (displayFWVersion)
 		{
 			snprintf(buffer, 22U, "%s", &HOTSPOT_VERSION_STRING[12]);
-			buffer[21U] = 0;
 			ucPrintCentered(16 + 4, buffer, FONT_SIZE_1);
 		}
 		else
@@ -592,13 +613,12 @@ static void updateScreen(uint8_t rxCommandState)
 		{
 			if ((trxTalkGroupOrPcId & 0xFF000000) == 0)
 			{
-				snprintf(buffer, bufferLen, "TG %d", trxTalkGroupOrPcId & 0x00FFFFFF);
+				snprintf(buffer, bufferLen, "%s %d", currentLanguage->tg, trxTalkGroupOrPcId & 0x00FFFFFF);
 			}
 			else
 			{
-				snprintf(buffer, bufferLen, "PC %d", trxTalkGroupOrPcId & 0x00FFFFFF);
+				snprintf(buffer, bufferLen, "%s %d", currentLanguage->pc, trxTalkGroupOrPcId & 0x00FFFFFF);
 			}
-			buffer[bufferLen - 1] = 0;
 		}
 
 		ucPrintCentered(32, buffer, FONT_SIZE_3);
@@ -616,14 +636,12 @@ static void updateScreen(uint8_t rxCommandState)
 			if (displayFWVersion)
 			{
 				snprintf(buffer, 22U, "%s", &HOTSPOT_VERSION_STRING[12]);
-				buffer[21U] = 0;
 			}
 			else
 			{
 				if (dmrIDLookup(rxedDMR_LC.srcId, &currentRec) == true)
 				{
 					snprintf(buffer, bufferLen, "%s", currentRec.text);
-					buffer[bufferLen - 1] = 0;
 				}
 				else
 				{
@@ -635,13 +653,12 @@ static void updateScreen(uint8_t rxCommandState)
 
 			if (rxedDMR_LC.FLCO == 0)
 			{
-				snprintf(buffer, bufferLen, "TG %d", rxedDMR_LC.dstId);
+				snprintf(buffer, bufferLen, "%s %d", currentLanguage->tg, rxedDMR_LC.dstId);
 			}
 			else
 			{
-				snprintf(buffer, bufferLen, "PC %d", rxedDMR_LC.dstId);
+				snprintf(buffer, bufferLen, "%s %d", currentLanguage->pc, rxedDMR_LC.dstId);
 			}
-			buffer[bufferLen - 1] = 0;
 
 			ucPrintCentered(32, buffer, FONT_SIZE_3);
 		}
@@ -651,7 +668,6 @@ static void updateScreen(uint8_t rxCommandState)
 			if (displayFWVersion)
 			{
 				snprintf(buffer, 22U, "%s", &HOTSPOT_VERSION_STRING[12]);
-				buffer[21U] = 0;
 				ucPrintCentered(16 + 4, buffer, FONT_SIZE_1);
 			}
 			else
@@ -670,7 +686,6 @@ static void updateScreen(uint8_t rxCommandState)
 			}
 
 			snprintf(buffer, bufferLen, "CC:%d", trxGetDMRColourCode());//, trxGetDMRTimeSlot()+1) ;
-			buffer[bufferLen - 1] = 0;
 
 			ucPrintCore(0, 32, buffer, FONT_SIZE_3, TEXT_ALIGN_LEFT, false);
 
@@ -680,18 +695,51 @@ static void updateScreen(uint8_t rxCommandState)
 		val_before_dp = freq_rx / 100000;
 		val_after_dp = freq_rx - val_before_dp * 100000;
 		snprintf(buffer, bufferLen, "R %d.%05d MHz", val_before_dp, val_after_dp);
-		buffer[bufferLen - 1] = 0;
 	}
 
 	ucPrintCentered(48, buffer, FONT_SIZE_3);
 	ucRender();
 
-	displayLightTrigger();
+	displayLightTrigger(false);
 }
 
 static bool handleEvent(uiEvent_t *ev)
 {
-	displayLightTrigger();
+	displayLightTrigger(ev->hasEvent);
+
+#if defined(DEMO_SCREEN)
+	if (ev->events & FUNCTION_EVENT)
+	{
+		demoScreen = ((ev->function >= 90) && (ev->function < 100));
+
+		switch (ev->function)
+		{
+			case 90:
+				sprintf(mmdvmQSOInfoIP, "%s", "192.168.100.10");
+				settingsUsbMode = USB_MODE_CPS;
+				break;
+			case 91:
+				trxTalkGroupOrPcId = 98977;
+				LinkHead->talkGroupOrPcId = 0;
+				sprintf(LinkHead->contact, "%s", "VK3KYY");
+				trxTransmissionEnabled = true;
+				updateScreen(HOTSPOT_STATE_TX_START_BUFFERING);
+				break;
+			case 92:
+				rxedDMR_LC.FLCO = 0;
+				rxedDMR_LC.srcId = 5053238;
+				rxedDMR_LC.dstId = 91;
+				trxTransmissionEnabled = false;
+				updateScreen(HOTSPOT_RX_START);
+				break;
+			case 93:
+				modemState = STATE_POCSAG;
+				trxTransmissionEnabled = false;
+				updateScreen(HOTSPOT_RX_IDLE);
+				break;
+		}
+	}
+#endif
 
 	if (KEYCHECK_SHORTUP(ev->keys, KEY_RED)
 #if defined(PLATFORM_GD77S)
@@ -735,13 +783,13 @@ static bool handleEvent(uiEvent_t *ev)
 
 static void hotspotExit(void)
 {
-	disableTransmission();
+	trxDisableTransmission();
 	if (trxTransmissionEnabled)
 	{
 		trxTransmissionEnabled = false;
-		trx_setRX();
+		//trxSetRX();
 
-		GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+		LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 
 		if (cwKeying)
 		{
@@ -749,6 +797,8 @@ static void hotspotExit(void)
 			cwKeying = false;
 		}
 	}
+
+	currentChannelData->libreDMR_Power = savedLibreDMR_Power;
 
 	trxTalkGroupOrPcId = savedTGorPC;// restore the current TG or PC
 	if (savedPowerLevel != -1)
@@ -1395,7 +1445,7 @@ static void hotspotStateMachine(void)
 			if (trxTransmissionEnabled)
 			{
 				trxTransmissionEnabled = false;
-				disableTransmission();
+				trxDisableTransmission();
 			}
 
 			rfFrameBufCount = 0;
@@ -1432,7 +1482,7 @@ static void hotspotStateMachine(void)
 			if (trxTransmissionEnabled)
 			{
 				trxTransmissionEnabled = false;
-				disableTransmission();
+				trxDisableTransmission();
 			}
 
 			wavbuffer_read_idx = 0;
@@ -1468,7 +1518,7 @@ static void hotspotStateMachine(void)
 				if (trxTransmissionEnabled)
 				{
 					trxTransmissionEnabled = false;
-					disableTransmission();
+					trxDisableTransmission();
 				}
 
 				updateScreen(HOTSPOT_RX_IDLE);
@@ -1591,7 +1641,8 @@ static void hotspotStateMachine(void)
 				lastRxState = HOTSPOT_RX_IDLE;
 				hotspotState = HOTSPOT_STATE_TX_SHUTDOWN;
 				mmdvmHostIsConnected = false;
-				disableTransmission();
+				trxTransmissionEnabled = false;
+				trxDisableTransmission();
 				updateScreen(HOTSPOT_RX_IDLE);
 
 			}
@@ -1602,7 +1653,7 @@ static void hotspotStateMachine(void)
 					if (cwKeying == false)
 					{
 						hotspotState = HOTSPOT_STATE_TRANSMITTING;
-						enableTransmission();
+						trxEnableTransmission();
 						updateScreen(HOTSPOT_RX_IDLE);
 					}
 				}
@@ -1622,7 +1673,7 @@ static void hotspotStateMachine(void)
 			if (wavbuffer_count == 0 || modemState == STATE_IDLE)
 			{
 				hotspotState = HOTSPOT_STATE_TX_SHUTDOWN;
-				trxTransmissionEnabled = false;
+				//trxTransmissionEnabled = false;
 			}
 			break;
 
@@ -1634,7 +1685,7 @@ static void hotspotStateMachine(void)
 				if (wavbuffer_count > 0)
 				{
 					// restart
-					enableTransmission();
+					trxEnableTransmission();
 					timeoutCounter = TX_BUFFERING_TIMEOUT;
 					hotspotState = HOTSPOT_STATE_TX_START_BUFFERING;
 				}
@@ -1644,7 +1695,8 @@ static void hotspotStateMachine(void)
 				if ((trxIsTransmitting) ||
 						((modemState == STATE_IDLE) && trxTransmissionEnabled)) // MMDVMHost asked to go back to IDLE (mostly on shutdown)
 				{
-					disableTransmission();
+					trxTransmissionEnabled = false;
+					trxDisableTransmission();
 					hotspotState = HOTSPOT_STATE_RX_START;
 					updateScreen(HOTSPOT_RX_IDLE);
 
@@ -1704,7 +1756,7 @@ static uint8_t setFreq(volatile const uint8_t* data, uint8_t length)
 	{
 		freq_rx = fRx;
 		freq_tx = fTx;
-		trxSetFrequency(freq_rx, freq_tx, DMR_MODE_ACTIVE);// Override the default assumptions about DMR mode based on frequency
+		trxSetFrequency(freq_rx, freq_tx, DMR_MODE_DMO);// Override the default assumptions about DMR mode based on frequency
 	}
 	else
 	{
@@ -1991,8 +2043,7 @@ static uint8_t setQSOInfo(volatile const uint8_t *data, uint8_t length)
 			pBuf = pIface + 1;
 		}
 
-		snprintf(mmdvmQSOInfoIP, 21, "%s", pBuf);
-		mmdvmQSOInfoIP[21] = 0;
+		snprintf(mmdvmQSOInfoIP, 22, "%s", pBuf);
 
 		updateScreen(currentRxCommandState);
 
@@ -2398,10 +2449,10 @@ static void handleHotspotRequest(void)
 		// Invalid MMDVM header byte
 	}
 
-	if ((menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA) || (menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA_UPDATE))
+	if ((uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA) || (uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA_UPDATE))
 	{
 		updateScreen(currentRxCommandState);
-		menuDisplayQSODataState = QSO_DISPLAY_IDLE;
+		uiDataGlobal.displayQSOState = QSO_DISPLAY_IDLE;
 	}
 
 	if (cwKeying)
@@ -2416,7 +2467,7 @@ static void handleHotspotRequest(void)
 				trxSetTone1(0);
 			}
 
-			enableTransmission();
+			trxEnableTransmission();
 
 			trxSelectVoiceChannel(AT1846_VOICE_CHANNEL_TONE1);
 			enableAudioAmp(AUDIO_AMP_MODE_RF);
@@ -2428,14 +2479,14 @@ static void handleHotspotRequest(void)
 		// CWID has been TXed, restore DIGITAL
 		if (cwpoLen == 0U)
 		{
-			disableTransmission();
+			trxDisableTransmission();
 
 			if (trxTransmissionEnabled)
 			{
 				// Stop TXing;
 				trxTransmissionEnabled = false;
-				trx_setRX();
-				GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+				//trxSetRX();
+				LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 
 				if (trxGetMode() == RADIO_MODE_ANALOG)
 				{

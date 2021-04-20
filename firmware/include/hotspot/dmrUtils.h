@@ -17,8 +17,8 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef	_DMRUTILS_H
-#define	_DMRUTILS_H
+#ifndef	_OPENGD77_DMRUTILS_H_
+#define	_OPENGD77_DMRUTILS_H_
 
 #include <stdbool.h>
 #include <stdint.h>

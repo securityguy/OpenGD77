@@ -35,8 +35,7 @@ void adcInit(void);
 void ADC0_IRQHandler(void);
 int adcGetBatteryVoltage(void);
 int getVOX(void);
-
+int getTemperature(void);
 
 
 #endif /* _OPENGD77_ADC_H_ */
-

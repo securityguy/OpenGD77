@@ -19,10 +19,10 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/BPTC19696.h>
-#include <hotspot/dmrUtils.h>
-#include <hotspot/Hamming.h>
 #include <string.h>
+#include "hotspot/BPTC19696.h"
+#include "hotspot/dmrUtils.h"
+#include "hotspot/Hamming.h"
 
 __attribute__((section(".data.$RAM2"))) static bool BPTC19696_rawData[196];
 __attribute__((section(".data.$RAM2"))) static bool BPTC19696_deInterData[196];
@@ -47,7 +47,7 @@ void debugBitPatterns(bool *data)
 	{
 		buf[i] = data[i] ? '1' : '0';
 	}
-#if defined(USE_SEGGER_RTT)
+#if defined(USING_EXTERNAL_DEBUGGER)
     SEGGER_RTT_printf(0, "pattern %s\r\n",buf);
 #endif
 }

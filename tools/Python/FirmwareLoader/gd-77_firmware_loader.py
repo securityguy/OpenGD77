@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 ################################################################################################################################################
 #
-# GD-77 Firmware uploader. By Roger VK3KYY
+# GD-77 Firmware uploader. By Roger VK3KYY and Daniel F1RMB
 # 
 #
 # This script has only been tested on Windows and Linux, it may or may not work on OSX
@@ -34,6 +34,7 @@
 # -8:  Online download firmware binary error
 # -9:  Online firmware download failure
 # -10: Firmare/HT mismatch
+# -11: Unable to retrieve firmware list
 # -99: Unsupported GD-77S (will be removed in the futur)
 #
 ###############################################################
@@ -92,17 +93,23 @@ def strdumpArray(buf):
         cbuf = cbuf + chr(b)
     return cbuf
 
-def downloadFirmware(downloadStable):
+########################################################################
+## List all firmware versions
+########################################################################
+def listTags(downloadStable, fwLanguage):
     url = "https://github.com/rogerclarkmelbourne/OpenGD77/releases"
     urlBase = "http://github.com"
     httpPool = urllib3.PoolManager()
     pattern = ""
     fwVersion = "UNKNOWN"
     fwVersionPatternFormat = r'/{}([0-9\.]+)/'
-    urlFW = ""
     webContent = ""
+    listBuilt = False
+    choosedLanguage = "" if fwLanguage == "" else "_" + fwLanguage
         
-    print(" - " + "Try to download the firmware for your {} from the project page".format(outputModes[int(outputFormat)]))
+    print(" - " + "Try to retrieve the list of firmware for your {} from the project page".format(outputModes[int(outputFormat)]))
+    if (fwLanguage != ""):
+        print(" - " + "Specific language: " + fwLanguage)
     print(" - " + "Retrieve firmware location");
 
     try:
@@ -114,18 +121,80 @@ def downloadFirmware(downloadStable):
     webContent = str(response.data)
     
     if (outputFormat == SGLFormatOutput.GD_77):
-        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenGD77\.sgl'
+        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenGD77' + choosedLanguage + '\.sgl'
     elif (outputFormat == SGLFormatOutput.GD_77S):
-        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenGD77S\.sgl'
+        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenGD77S' + choosedLanguage + '\.sgl'
     elif (outputFormat == SGLFormatOutput.DM_1801):
-        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenDM1801\.sgl'
+        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenDM1801' + choosedLanguage + '\.sgl'
     elif (outputFormat == SGLFormatOutput.RD_5R):
-        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenDM5R\.sgl'
+        patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenRD5R' + choosedLanguage + '\.sgl'
 
     pattern = patternFormat.format("R" if downloadStable == True else "D")
-    fwVersionPattern = fwVersionPatternFormat.format("R" if downloadStable == True else "D") 
-    contentArray = webContent.split("\n")    
+    fwVersionPattern = fwVersionPatternFormat.format("R" if downloadStable == True else "D")
+    contentArray = webContent.split("\n")
     
+    for l in contentArray:
+        m = re.findall(pattern, l)
+
+        if (m != None):
+            print(" - " + "Available " + ("STABLE" if downloadStable == True else "UNSTABLE") + " build date version:");
+            for v in m:
+                listBuilt = True
+                print("     ->  {}".format(v))
+
+    if (listBuilt):
+        return True
+
+    return False
+
+########################################################################
+## Download the firmware
+########################################################################
+def downloadFirmware(downloadStable, fwLanguage, fwTag):
+    url = "https://github.com/rogerclarkmelbourne/OpenGD77/releases"
+    urlBase = "http://github.com"
+    httpPool = urllib3.PoolManager()
+    pattern = ""
+    fwVersion = "UNKNOWN"
+    fwVersionPatternFormat = r'/{}([0-9\.]+)/'
+    urlFW = ""
+    webContent = ""
+    choosedLanguage = "" if fwLanguage == "" else "_" + fwLanguage
+        
+    print(" - " + "Try to download the firmware for your {} from the project page".format(outputModes[int(outputFormat)]))
+    print(" - " + "Retrieve firmware location");
+
+    try:
+        response = httpPool.request('GET', url)
+    except urllib3.URLError as e:
+        print("".format(e.reason))
+        sys.exit(-7)
+        
+    webContent = str(response.data)
+
+    if (fwTag == ""):
+        if (outputFormat == SGLFormatOutput.GD_77):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenGD77' + choosedLanguage + '\.sgl'
+        elif (outputFormat == SGLFormatOutput.GD_77S):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenGD77S' + choosedLanguage + '\.sgl'
+        elif (outputFormat == SGLFormatOutput.DM_1801):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenDM1801' + choosedLanguage + '\.sgl'
+        elif (outputFormat == SGLFormatOutput.RD_5R):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}([0-9\.]+)/OpenRD5R' + choosedLanguage + '\.sgl'
+    else:
+        if (outputFormat == SGLFormatOutput.GD_77):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}' + fwTag + '/OpenGD77' + choosedLanguage + '\.sgl'
+        elif (outputFormat == SGLFormatOutput.GD_77S):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}' + fwTag + '/OpenGD77S' + choosedLanguage + '\.sgl'
+        elif (outputFormat == SGLFormatOutput.DM_1801):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}' + fwTag + '/OpenDM1801' + choosedLanguage + '\.sgl'
+        elif (outputFormat == SGLFormatOutput.RD_5R):
+            patternFormat = r'/rogerclarkmelbourne/OpenGD77/releases/download/{}' + fwTag + '/OpenRD5R' + choosedLanguage + '\.sgl'
+            
+    pattern = patternFormat.format("R" if downloadStable == True else "D")
+    fwVersionPattern = fwVersionPatternFormat.format("R" if downloadStable == True else "D") 
+    contentArray = webContent.split("\n")
+        
     for l in contentArray:
         m = re.search(pattern, l)
         if (m != None):
@@ -134,9 +203,8 @@ def downloadFirmware(downloadStable):
             m = re.search(fwVersionPattern, urlFW)
             if (m != None):
                 fwVersion = m.group(0).strip('/')
-            
-            break
-    
+                break
+
     if (len(urlFW)):
         global downloadedFW
         downloadedFW = os.path.join(tempfile.gettempdir(), next(tempfile._get_candidate_names()) + '.sgl')
@@ -464,11 +532,14 @@ def usage():
     print("       " + ntpath.basename(sys.argv[0]) + " [OPTION]")
     print("")
     print("    -h, --help                     : Display this help text")
-    print("    -f, --firmware=<filename.sgl>  : Flash <filename.sgl> instead of default file \"firmware.sgl\"")
+    print("    -f, --firmware=<filename.sgl>  : Flash <filename.sgl> instead of default file \"OpenGD77.sgl\"")
     print("    -m, --model=<type>             : Select transceiver model. Models are: {}".format(", ".join(str(x) for x in outputModes[:-1])) + ".")
+    print("    -l, --list                     : List the available firmware version tags")
     print("    -d, --download                 : Download firmware from the project website")
+    print("    -t, --tag=<TAG>                : Download specific firmware version tag (see -l)")
     print("    -S, --stable                   : Select the stable version while downloading from the project page")
     print("    -U, --unstable                 : Select the development version while downloading from the project page")
+    print("    -L, --language=<LANG>          : Download or list language specific version (e.g. JA for Japanese)")
     print("")
 
 #####################################################
@@ -476,14 +547,17 @@ def usage():
 #####################################################
 def main():
     global outputFormat
-    sglFile = "firmware.sgl"
+    sglFile = "OpenGD77.sgl"
     downloadStable = True
     doDownload = False
     doForce = False
+    doListing = False
+    fwLanguage = ""
+    fwTag = ""
 
     # Command line argument parsing
     try:                                
-        opts, args = getopt.getopt(sys.argv[1:], "hf:m:dSUF", ["help", "firmware=", "model=", "download", "stable", "unstable", "force"])
+        opts, args = getopt.getopt(sys.argv[1:], "hf:m:L:t:ldSUF", ["help", "firmware=", "model=", "language=", "tag", "list", "download", "stable", "unstable", "force"])
     except getopt.GetoptError as err:
         print(str(err))
         usage()
@@ -508,6 +582,12 @@ def main():
                 print("Unsupported model")
                 sys.exit(-5)
                 
+        elif opt in ("-L", "--language"):
+            fwLanguage = arg
+        elif opt in ("-t", "--tag"):
+            fwTag = arg
+        elif opt in ["-l", "--list"]:
+            doListing = True
         elif opt in ["-d", "--download"]:
             doDownload = True
         elif opt in ["-S", "--stable"]:
@@ -518,6 +598,14 @@ def main():
             doForce = True
         else:
             assert False, "Unhandled option"
+
+
+    if (doListing == True):
+        if (listTags(downloadStable, fwLanguage) == True):
+            sys.exit(0)
+        else:
+            print("Unable to retrieve firmware list")
+            sys.exit(-11)
 
     # Try to connect USB device
     dev = usb.core.find(idVendor=0x15a2, idProduct=0x0073)
@@ -541,7 +629,7 @@ def main():
         
         # Try to download the firmware
         if (doDownload == True):
-            if (downloadFirmware(downloadStable) == True):
+            if (downloadFirmware(downloadStable, fwLanguage, fwTag) == True):
                 sglFile = downloadedFW
             else:
                 print("Firmware download failed")

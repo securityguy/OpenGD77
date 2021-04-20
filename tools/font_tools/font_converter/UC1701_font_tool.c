@@ -1,7 +1,7 @@
 /* -*- mode: c; c-file-style: "k&r"; compile-command: "gcc -Wall -O2 -I../../firmware/include/hardware -static -s -o UC1701_font_tool UC1701_font_tool.c"; -*- */
 
 /*
- * Copyright (C) 2019 F1RMB Daniel Caujolle-Bert <f1rmb.daniel@gmail.com>
+ * Copyright (C) 2019-2020 F1RMB Daniel Caujolle-Bert <f1rmb.daniel@gmail.com>
  * 
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,7 +39,11 @@
 #define BUILD_FONT_TOOL
 #endif
 
+#ifdef JAPANESE_BUILD
+#include "UC1701_charset_JA.h"
+#else
 #include "UC1701_charset.h"
+#endif
 
 #define VERSION_MAJOR     0
 #define VERSION_MINOR     0
@@ -162,7 +166,7 @@ char *GDtoUTF8(uint8_t c)
 
      for (uint32_t i = 0; i < (sizeof(char_hand_assigned) / sizeof(char_hand_assigned[0])); i++)
      {
-	  if (char_hand_assigned[i].octal[1] == c)
+	  if (char_hand_assigned[i].octal == c)
 	  {
 	       static char buf[5];
 	       // Add a marker for hand assigned glyph
@@ -221,9 +225,9 @@ uint8_t UTF8toGD(wint_t c, size_t *cLen)
 	  {
 	       static char buf[5];
 	       // Add a marker for hand assigned glyph
-	       sprintf(buf, "%c", char_hand_assigned[i].octal[1]);
+	       sprintf(buf, "%c", char_hand_assigned[i].octal);
 	       *cLen = bytes;
-	       return char_hand_assigned[i].octal[1];
+	       return char_hand_assigned[i].octal;
 	  }
      }
 
@@ -1133,7 +1137,7 @@ static void language_to_gd(const char *inputFile)
 		    break;
 	  }
 	  
-	  sprintf(header, "/* -*- coding: %s; -*- */", ((binEncoding == 1)? "binary" : "windows-1252-unix"));
+	  sprintf(header, "/* -*- coding: %s; -*- */", ((binEncoding == 1) ? "binary" : "windows-1252-unix"));
 	  
 	  if ((wlen = write(outFD, header, strlen(header))) != strlen(header))
 	  {
@@ -1197,7 +1201,7 @@ static void language_to_gd(const char *inputFile)
 
 static void displayHelp(void)
 {
-     fprintf(stdout, "UC1701 font tool v%d.%d.%d - 2019 - F1RMB Daniel Caujolle-Bert.\n", VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
+     fprintf(stdout, "UC1701 font tool v%d.%d.%d - 2019-2020 - F1RMB Daniel Caujolle-Bert.\n", VERSION_MAJOR, VERSION_MINOR, VERSION_REVISION);
      fprintf(stdout, "\n");
      fprintf(stdout, "      --export, -e                    : Export all UC1701 fonts to XBitmap files.\n");
      fprintf(stdout, "      --import, -i <file.xbm>         : Convert given file to UC1701 format.\n");
@@ -1208,6 +1212,9 @@ static void displayHelp(void)
 
 int main(int argc, char **argv)
 {
+#ifdef JAPANESE_BUILD
+     fprintf(stdout, "*** Japanese Edition ***\n");
+#endif
      if (argc > 1)
      {
 //	  setlocale(LC_CTYPE, NULL);//"ISO-8859-1");//"C");

@@ -20,10 +20,10 @@
 #include "functions/voicePrompts.h"
 #include "functions/settings.h"
 #include "user_interface/uiLocalisation.h"
+#include "functions/rxPowerSaving.h"
 
 const uint32_t VOICE_PROMPTS_DATA_MAGIC = 0x5056;//'VP'
-const uint32_t VOICE_PROMPTS_DATA_VERSION_V2 = 0x0002;
-const uint32_t VOICE_PROMPTS_DATA_VERSION_V1 = 0x0001;
+const uint32_t VOICE_PROMPTS_DATA_VERSION = 0x0003;// Version 3 does not have the PROMPT_TBD items in it
 #define VOICE_PROMPTS_TOC_SIZE 256
 
 static void getAmbeData(int offset,int length);
@@ -44,7 +44,7 @@ bool voicePromptIsActive = false;
 static int promptDataPosition = -1;
 static int currentPromptLength = -1;
 
-__attribute__((section(".data.$RAM4")))static uint8_t ambeData[AMBE_DATA_BUFFER_SIZE];
+__attribute__((section(".data.$RAM2")))static uint8_t ambeData[AMBE_DATA_BUFFER_SIZE];
 
 #define VOICE_PROMPTS_SEQUENCE_BUFFER_SIZE 128
 
@@ -55,35 +55,22 @@ typedef struct
 	int  Length;
 } VoicePromptsSequence_t;
 
-__attribute__((section(".data.$RAM4"))) static VoicePromptsSequence_t voicePromptsCurrentSequence =
+__attribute__((section(".data.$RAM2"))) static VoicePromptsSequence_t voicePromptsCurrentSequence =
 {
 	.Pos = 0,
 	.Length = 0
 };
 
-__attribute__((section(".data.$RAM4"))) uint32_t tableOfContents[VOICE_PROMPTS_TOC_SIZE];
+__attribute__((section(".data.$RAM2"))) uint32_t tableOfContents[VOICE_PROMPTS_TOC_SIZE];
 
 void voicePromptsCacheInit(void)
 {
 	VoicePromptsDataHeader_t header;
 	SPI_Flash_read(VOICE_PROMPTS_FLASH_HEADER_ADDRESS,(uint8_t *)&header,sizeof(VoicePromptsDataHeader_t));
 
-	if ((header.magic == VOICE_PROMPTS_DATA_MAGIC) && (header.version == VOICE_PROMPTS_DATA_VERSION_V2 || header.version == VOICE_PROMPTS_DATA_VERSION_V1 ))
+	if ((header.magic == VOICE_PROMPTS_DATA_MAGIC) && (header.version == VOICE_PROMPTS_DATA_VERSION))
 	{
 		voicePromptDataIsLoaded = SPI_Flash_read(VOICE_PROMPTS_FLASH_HEADER_ADDRESS + sizeof(VoicePromptsDataHeader_t), (uint8_t *)&tableOfContents, sizeof(uint32_t) * VOICE_PROMPTS_TOC_SIZE);
-	}
-
-	if (voicePromptDataIsLoaded && (header.version == VOICE_PROMPTS_DATA_VERSION_V1))
-	{
-		// Need to upgrade the version 1 voice prompt data to V2 format
-
-		const int NUM_EXTRA_PROMPTS_IN_V2 = 23;
-
-		// New items were added after PROMPT_VFO_COPY_TX_TO_RX
-		for(int i = 255; i > PROMPT_VFO_COPY_TX_TO_RX; i--)
-		{
-			tableOfContents[i] = tableOfContents[i - NUM_EXTRA_PROMPTS_IN_V2];
-		}
 	}
 
 	// is data is not loaded change prompt mode back to beep.
@@ -105,7 +92,7 @@ void voicePromptsTick(void)
 {
 	if (promptDataPosition < currentPromptLength)
 	{
-		if (wavbuffer_count < (WAV_BUFFER_COUNT- 6))
+		if (wavbuffer_count < (WAV_BUFFER_COUNT - 6))
 		{
 			codecDecode((uint8_t *)&ambeData[promptDataPosition], 3);
 			soundTickRXBuffer();
@@ -122,7 +109,6 @@ void voicePromptsTick(void)
 
 			currentPromptLength = tableOfContents[promptNumber + 1] - tableOfContents[promptNumber];
 			getAmbeData(tableOfContents[promptNumber],currentPromptLength);
-
 		}
 		else
 		{
@@ -177,7 +163,7 @@ static void voicePromptsTerminateAndInit(void)
 	voicePromptsCurrentSequence.Pos = 0;
 }
 
-void voicePromptsAppendPrompt(uint8_t prompt)
+void voicePromptsAppendPrompt(voicePrompt_t prompt)
 {
 	if (nonVolatileSettings.audioPromptMode < AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
 	{
@@ -188,9 +174,10 @@ void voicePromptsAppendPrompt(uint8_t prompt)
 	{
 		voicePromptsTerminateAndInit();
 	}
-	voicePromptsCurrentSequence.Buffer[voicePromptsCurrentSequence.Length] = prompt;
+
 	if (voicePromptsCurrentSequence.Length < VOICE_PROMPTS_SEQUENCE_BUFFER_SIZE)
 	{
+		voicePromptsCurrentSequence.Buffer[voicePromptsCurrentSequence.Length] = prompt;
 		voicePromptsCurrentSequence.Length++;
 	}
 }
@@ -207,48 +194,43 @@ void voicePromptsAppendString(char *promptString)
 		voicePromptsTerminateAndInit();
 	}
 
-	for(; *promptString != 0; promptString++)
+	while (*promptString != 0)
 	{
 		if ((*promptString >= '0') && (*promptString <= '9'))
 		{
 			voicePromptsAppendPrompt(*promptString - '0' + PROMPT_0);
-			continue;
 		}
-
-		if ((*promptString >= 'A') && (*promptString <= 'Z'))
+		else if ((*promptString >= 'A') && (*promptString <= 'Z'))
 		{
 			voicePromptsAppendPrompt(*promptString - 'A' + PROMPT_A);
-			continue;
 		}
-		if ((*promptString >= 'a') && (*promptString <= 'z'))
+		else if ((*promptString >= 'a') && (*promptString <= 'z'))
 		{
 			voicePromptsAppendPrompt(*promptString - 'a' + PROMPT_A);
-			continue;
 		}
-
-		if (*promptString == '.')
+		else if (*promptString == '.')
 		{
 			voicePromptsAppendPrompt(PROMPT_POINT);
-			continue;
 		}
-
-		if (*promptString == '+')
+		else if (*promptString == '+')
 		{
 			voicePromptsAppendPrompt(PROMPT_PLUS);
-			continue;
 		}
-		if (*promptString == '-')
+		else if (*promptString == '-')
 		{
 			voicePromptsAppendPrompt(PROMPT_MINUS);
-			continue;
 		}
-		if (*promptString == '%')
+		else if (*promptString == '%')
 		{
 			voicePromptsAppendPrompt(PROMPT_PERCENT);
-			continue;
 		}
-		// otherwise just add silence
-		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		else
+		{
+			// otherwise just add silence
+			voicePromptsAppendPrompt(PROMPT_SILENCE);
+		}
+
+		promptString++;
 	}
 }
 
@@ -261,7 +243,7 @@ void voicePromptsAppendInteger(int32_t value)
 
 void voicePromptsAppendLanguageString(const char * const *languageStringAdd)
 {
-	if (nonVolatileSettings.audioPromptMode < AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
+	if ((nonVolatileSettings.audioPromptMode < AUDIO_PROMPT_MODE_VOICE_LEVEL_1) || (languageStringAdd == NULL))
 	{
 		return;
 	}
@@ -275,9 +257,12 @@ void voicePromptsPlay(void)
 		return;
 	}
 
-	if ((voicePromptIsActive == false) && (voicePromptsCurrentSequence.Length != 0))
+	if ((voicePromptIsActive == false) && (voicePromptsCurrentSequence.Length > 0))
 	{
+		rxPowerSavingSetState(ECOPHASE_POWERSAVE_INACTIVE);
+
 		int promptNumber = voicePromptsCurrentSequence.Buffer[0];
+
 		voicePromptsCurrentSequence.Pos = 0;
 		currentPromptLength = tableOfContents[promptNumber + 1] - tableOfContents[promptNumber];
 		getAmbeData(tableOfContents[promptNumber], currentPromptLength);
@@ -288,13 +273,12 @@ void voicePromptsPlay(void)
 		codecInit();
 		promptDataPosition = 0;
 		voicePromptIsActive = true;// Start the playback
-		voicePromptsTick();
 	}
 }
 
 inline bool voicePromptsIsPlaying(void)
 {
-	return (voicePromptIsActive);// && (getAudioAmpStatus() & AUDIO_AMP_MODE_PROMPT));
+	return (voicePromptIsActive);
 }
 
 bool voicePromptsHasDataToPlay(void)

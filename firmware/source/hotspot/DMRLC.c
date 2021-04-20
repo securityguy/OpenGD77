@@ -18,9 +18,9 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/dmrDefines.h>
-#include <hotspot/dmrUtils.h>
-#include <hotspot/DMRLC.h>
+#include "hotspot/dmrDefines.h"
+#include "hotspot/dmrUtils.h"
+#include "hotspot/DMRLC.h"
 
 void DMRLC3(int flco, unsigned int srcId, unsigned int dstId, DMRLC_T *lc)
 {

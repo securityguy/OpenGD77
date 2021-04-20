@@ -16,8 +16,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <SPI_Flash.h>
-#include <gpio.h>
+#include "hardware/SPI_Flash.h"
+#include "interfaces/gpio.h"
 
 // private functions
 static bool spi_flash_busy(void);
@@ -255,14 +255,17 @@ bool SPI_Flash_eraseSector(uint32_t addr_start)
 
 static inline void spi_flash_enable(void)
 {
-	//GPIO_PinWrite(GPIO_SPI_FLASH_CS_U, Pin_SPI_FLASH_CS_U, 0);
+    GPIO_PinInit(GPIO_SPI_FLASH_DO_U, Pin_SPI_FLASH_DO_U, &pin_config_output);
+	GPIO_PinInit(GPIO_SPI_FLASH_CS_U, Pin_SPI_FLASH_CS_U, &pin_config_output);
 	GPIO_SPI_FLASH_CS_U->PCOR = 1U << Pin_SPI_FLASH_CS_U;
 }
 
 static void spi_flash_disable(void)
 {
-	//GPIO_PinWrite(GPIO_SPI_FLASH_CS_U, Pin_SPI_FLASH_CS_U, 1);
+
 	GPIO_SPI_FLASH_CS_U->PSOR = 1U << Pin_SPI_FLASH_CS_U;
+	GPIO_PinInit(GPIO_SPI_FLASH_CS_U, Pin_SPI_FLASH_CS_U, &pin_config_input);
+	GPIO_PinInit(GPIO_SPI_FLASH_DO_U, Pin_SPI_FLASH_DO_U, &pin_config_input);
 }
 
 static uint8_t spi_flash_transfer(uint8_t c)

@@ -16,9 +16,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <HR-C6000.h>
-#include <settings.h>
-#include <sound.h>
+#include "hardware/HR-C6000.h"
+#include "functions/settings.h"
+#include "functions/sound.h"
+#include "functions/voicePrompts.h"
+#include "functions/rxPowerSaving.h"
 
 static void soundBeepTask(void *data);
 typedef union byteSwap16
@@ -94,6 +96,8 @@ const int MELODY_DMR_TX_START_BEEP[] = { 800, 50, -1, -1 };
 const int MELODY_DMR_TX_STOP_BEEP[] = { 500, 50, -1, -1 };
 const int MELODY_KEY_BEEP_FIRST_ITEM[] = { 800, 100, -1, -1 };
 const int MELODY_LOW_BATTERY[] = { 440, 200, 415, 200, 392, 200,-1, -1 };
+const int MELODY_QUICKKEYS_CLEAR_ACK_BEEP[] = { 880, 120, 660, 120, 440, 120, 660, 120, 880, 120, -1, -1 };
+const int MELODY_RX_TGTSCC_WARNING_BEEP[] = { 880, 40, -1, -1 };
 
 // To calculate the pitch use a spreadsheet etc   =ROUND(98*POWER(2, (NOTE_NUMBER/12)),0)
 static const int freqs[64] = {0,104,110,117,123,131,139,147,156,165,175,185,196,208,220,233,247,262,277,294,311,330,349,370,392,415,440,466,494,523,554,587,622,659,698,740,784,831,880,932,988,1047,1109,1175,1245,1319,1397,1480,1568,1661,1760,1865,1976,2093,2217,2349,2489,2637,2794,2960,3136,3322,3520,3729};
@@ -133,6 +137,13 @@ void disableAudioAmp(uint8_t mode)
 
 void soundSetMelody(const int *melody)
 {
+	rxPowerSavingSetState(ECOPHASE_POWERSAVE_INACTIVE);
+
+	if ((melody == MELODY_ERROR_BEEP) || (melody == MELODY_ACK_BEEP))
+	{
+		voicePromptsTerminate();
+	}
+
 	taskENTER_CRITICAL();
 	sine_beep_freq = 0;
 	sine_beep_duration = 0;
@@ -147,7 +158,7 @@ void soundCreateSong(const uint8_t *melody)
 	int song_idx = 0;
 	for (int i = 0; i < 256; i++)
 	{
-		if (melody[2 * i + 1] != 0)
+		if (melody[(2 * i) + 1] != 0)
 		{
 			int freqNum = melody[2 * i];
 			if ((freqNum > 63) || (freqNum < 0))
@@ -155,7 +166,7 @@ void soundCreateSong(const uint8_t *melody)
 				freqNum = 63;
 			}
 			melody_generic[song_idx++] = freqs[freqNum];
-			melody_generic[song_idx++] = melody[2 * i + 1] * 27;
+			melody_generic[song_idx++] = melody[(2 * i) + 1] * 27;
 		}
 		else
 		{
@@ -174,20 +185,20 @@ void soundInitBeepTask(void)
 	sine_beep_duration = 0;
 	taskEXIT_CRITICAL();
 
-	xTaskCreate(soundBeepTask,                        /* pointer to the task */
-				"beep task",                      /* task name for kernel awareness debugging */
-				1000L / sizeof(portSTACK_TYPE),      /* task stack size */
-				NULL,                      			 /* optional task startup argument */
-				5U,                                  /* initial priority */
-				fwBeepTaskHandle					 /* optional task handle to create */
-				);
+	xTaskCreate(soundBeepTask,                   /* pointer to the task */
+			"beep task",                         /* task name for kernel awareness debugging */
+			1000L / sizeof(portSTACK_TYPE),      /* task stack size */
+			NULL,                      			 /* optional task startup argument */
+			5U,                                  /* initial priority */
+			fwBeepTaskHandle					 /* optional task handle to create */
+	);
 }
 
 
 void soundInit(void)
 {
 	I2SReset();
-	spi_soundBuf=NULL;
+	spi_soundBuf = NULL;
 	wavbuffer_read_idx = 0;
 	wavbuffer_write_idx = 0;
 	wavbuffer_count = 0;
@@ -246,11 +257,11 @@ void soundSendData(void)
 
 		for (int i = 0; i < (WAV_BUFFER_SIZE / 2); i++)
 		{
-			*(spi_soundBuf + 4 * i + 3) = audioAndHotspotDataBuffer.wavbuffer[wavbuffer_read_idx][2 * i + 1];
-			*(spi_soundBuf + 4 * i + 2) = audioAndHotspotDataBuffer.wavbuffer[wavbuffer_read_idx][2 * i];
+			*(spi_soundBuf + (4 * i) + 3) = audioAndHotspotDataBuffer.wavbuffer[wavbuffer_read_idx][(2 * i) + 1];
+			*(spi_soundBuf + (4 * i) + 2) = audioAndHotspotDataBuffer.wavbuffer[wavbuffer_read_idx][2 * i];
 		}
 
-		I2STransferTransmit(spi_soundBuf,WAV_BUFFER_SIZE * 2);
+		I2STransferTransmit(spi_soundBuf, WAV_BUFFER_SIZE * 2);
 
 		wavbuffer_read_idx++;
 		if (wavbuffer_read_idx >= WAV_BUFFER_COUNT)
@@ -276,9 +287,9 @@ void soundReceiveData(void)
 		{
 			for (int i = 0; i < (WAV_BUFFER_SIZE / 2); i++)
 			{
-				swapper.bytes8[1] = *(spi_soundBuf + 4 * i + 3);
-				audioAndHotspotDataBuffer.wavbuffer[wavbuffer_write_idx][ 2 * i + 1] = swapper.bytes8[1];
-				swapper.bytes8[0] = *(spi_soundBuf + 4 * i + 2);
+				swapper.bytes8[1] = *(spi_soundBuf + (4 * i) + 3);
+				audioAndHotspotDataBuffer.wavbuffer[wavbuffer_write_idx][(2 * i) + 1] = swapper.bytes8[1];
+				swapper.bytes8[0] = *(spi_soundBuf + (4 * i) + 2);
 				audioAndHotspotDataBuffer.wavbuffer[wavbuffer_write_idx][2 * i] = swapper.bytes8[0];
 				if (abs(swapper.byte16) > runningMaxValue)
 				{
@@ -302,7 +313,7 @@ void soundReceiveData(void)
 		}
 
 		spi_soundBuf = spi_sound[g_SAI_RX_Handle.queueUser];
-		I2STransferReceive(spi_soundBuf,WAV_BUFFER_SIZE * 2);
+		I2STransferReceive(spi_soundBuf, WAV_BUFFER_SIZE * 2);
 	}
 }
 
@@ -311,12 +322,40 @@ void soundTickRXBuffer(void)
 	// The AMBE codec decodes 1 DMR frame into 6 buffers.
 	// Hence waiting for more than 6 buffers delays the sound playback by 1 DMR frame which gives some effective bufffering
 	// Max value for this is 12, as the total number of buffers is 18.
-    if (!g_TX_SAI_in_use && wavbuffer_count > 6)
-    {
-    	soundSendData();
-    }
+	if (!g_TX_SAI_in_use && wavbuffer_count > 6)
+	{
+		soundSendData();
+	}
 }
 
+void soundStopMelody(void)
+{
+	if (trxGetMode() == RADIO_MODE_ANALOG)
+	{
+		/*
+		 *  The DM-1801 audio amplifier seems very slow to respond to the control signal
+		 *  probably because the amp does not have an integrated enabled / disable pin,
+		 *  and instead the power to the amp is turned on and and off via a transistor.
+		 *  In FM mode when there is no signal, this results in the unsquelched hiss being heard at the end of the beep,
+		 *  in the time between the beep ending and the amp turning off.
+		 *  To resolve this problem, the audio mux control to the amp input, is left set to the output of the C6000
+		 *  unless there is a RF audio signal.
+		 *
+		 *  Note. Its quicker just to read the Green LED pin to see if there is an RF signal, but its safer to get he audio amp status
+		 *  to see if the amp is already on because of an RF signal.
+		 *
+		 *  On the GD-77. A click also seems to be induced at the end of the beep when the mux is changed back to the RF chip (AT1846)
+		 *  So this fix seems to slighly improve the GD-77 beep on FM
+		 */
+		if (getAudioAmpStatus() & AUDIO_AMP_MODE_RF)
+		{
+			GPIO_PinWrite(GPIO_RX_audio_mux, Pin_RX_audio_mux, 1);// Set the audio path to AT1846 -> audio amp.
+		}
+	}
+
+	disableAudioAmp(AUDIO_AMP_MODE_BEEP);
+	soundSetMelody(NULL);
+}
 
 void soundTickMelody(void)
 {
@@ -327,40 +366,16 @@ void soundTickMelody(void)
 		{
 			if (melody_play[melody_idx] == -1)
 			{
-				if (trxGetMode() == RADIO_MODE_ANALOG)
-				{
-					/*
-					 *  The DM-1801 audio amplifier seems very slow to respond to the control signal
-					 *  probably because the amp does not have an integrated enabled / disable pin,
-					 *  and instead the power to the amp is turned on and and off via a transistor.
-					 *  In FM mode when there is no signal, this results in the unsquelched hiss being heard at the end of the beep,
-					 *  in the time between the beep ending and the amp turning off.
-					 *  To resolve this problem, the audio mux control to the amp input, is left set to the output of the C6000
-					 *  unless there is a RF audio signal.
-					 *
-					 *  Note. Its quicker just to read the Green LED pin to see if there is an RF signal, but its safer to get he audio amp status
-					 *  to see if the amp is already on because of an RF signal.
-					 *
-					 *  On the GD-77. A click also seems to be induced at the end of the beep when the mux is changed back to the RF chip (AT1846)
-					 *  So this fix seems to slighly improve the GD-77 beep on FM
-					 */
-					if (getAudioAmpStatus() & AUDIO_AMP_MODE_RF)
-					{
-						GPIO_PinWrite(GPIO_RX_audio_mux, Pin_RX_audio_mux, 1);// Set the audio path to AT1846 -> audio amp.
-					}
-				}
-
-				disableAudioAmp(AUDIO_AMP_MODE_BEEP);
-			    soundSetMelody(NULL);
+				soundStopMelody();
 			}
 			else
 			{
 				if (melody_idx == 0)
 				{
 					enableAudioAmp(AUDIO_AMP_MODE_BEEP);
-				    if (trxGetMode() == RADIO_MODE_ANALOG)
+					if (trxGetMode() == RADIO_MODE_ANALOG)
 					{
-					    GPIO_PinWrite(GPIO_RX_audio_mux, Pin_RX_audio_mux, 0);// set the audio mux   HR-C6000 -> audio amp
+						GPIO_PinWrite(GPIO_RX_audio_mux, Pin_RX_audio_mux, 0);// set the audio mux   HR-C6000 -> audio amp
 					}
 				}
 				sine_beep_freq = melody_play[melody_idx];
@@ -382,83 +397,83 @@ static void soundBeepTask(void *data)
 	uint8_t spi_sound[32];
 	int waitTimeout;
 
-    while (1U)
-    {
-    	if (timer_beeptask == 0)
-    	{
+	while (1U)
+	{
+		if (timer_beeptask == 0)
+		{
+			timer_beeptask = 10;
 
-        	timer_beeptask = 10;
-        	taskENTER_CRITICAL();
-        	alive_beeptask = true;
-        	taskEXIT_CRITICAL();
+			taskENTER_CRITICAL();
+			alive_beeptask = true;
+			taskEXIT_CRITICAL();
 
-    		if (sine_beep_duration > 0)
-    		{
-    			if (!beep)
-    			{
-    				waitTimeout = WAIT_TIMEOUT_COUNT;
-    				NVIC_DisableIRQ(PORTC_IRQn);
-    				// Set C6000 audio path to "OpenMusic" for beep
-    				while ((SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x02) == -1) &&  ((waitTimeout--) >> 0))
-    				{
-    					vTaskDelay(0);
-    				}
-    				NVIC_EnableIRQ(PORTC_IRQn);
-    				beep = true;
-    			}
+			if (sine_beep_duration > 0)
+			{
+				if (!beep)
+				{
+					waitTimeout = WAIT_TIMEOUT_COUNT;
+					NVIC_DisableIRQ(PORTC_IRQn);
+					// Set C6000 audio path to "OpenMusic" for beep
+					while ((SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x02) == -1) &&  ((waitTimeout--) > 0))
+					{
+						vTaskDelay(0);
+					}
+					NVIC_EnableIRQ(PORTC_IRQn);
+					beep = true;
+				}
 
-    			waitTimeout = WAIT_TIMEOUT_COUNT;
-    			NVIC_DisableIRQ(PORTC_IRQn);
-    			while ((SPI0ReadPageRegByte(0x04, 0x88, &tmp_val) == -1) &&  ((waitTimeout--) >> 0))
+				waitTimeout = WAIT_TIMEOUT_COUNT;
+				NVIC_DisableIRQ(PORTC_IRQn);
+				while ((SPI0ReadPageRegByte(0x04, 0x88, &tmp_val) == -1) &&  ((waitTimeout--) > 0))
 				{
 					vTaskDelay(0);
 				}
 				NVIC_EnableIRQ(PORTC_IRQn);
 
-    			if ( !(tmp_val & 1))
-    			{
-    				for (int i = 0; i < 16; i++)
-    				{
-    					swapper.byte16 = ((int)sine_beep16[beep_idx]) >> soundBeepVolumeDivider;
-    					spi_sound[2 * i + 1] = swapper.bytes8[0];// low byte
-    					spi_sound[2 * i] = swapper.bytes8[1];// high byte
-    					if (sine_beep_freq != 0)
-    					{
+				if ( !(tmp_val & 1))
+				{
+					for (int i = 0; i < 16; i++)
+					{
+						swapper.byte16 = ((int)sine_beep16[beep_idx]) >> soundBeepVolumeDivider;
+						spi_sound[(2 * i) + 1] = swapper.bytes8[0];// low byte
+						spi_sound[2 * i] = swapper.bytes8[1];// high byte
+						if (sine_beep_freq != 0)
+						{
 							beep_idx = beep_idx + (int)(sine_beep_freq / 3.915f);
-    						if (beep_idx >= 0x0800)
-    						{
-    							beep_idx = beep_idx - 0x0800;
-    						}
-    					}
-    				}
-    				NVIC_DisableIRQ(PORTC_IRQn);
-    				waitTimeout = WAIT_TIMEOUT_COUNT;
-    				while ((SPI0WritePageRegByteArray(0x03, 0x00, spi_sound, 0x20) == -1) &&  ((waitTimeout--) >> 0))
-    				{
-    					vTaskDelay(0);
-    				}
-    				NVIC_EnableIRQ(PORTC_IRQn);
-    			}
+							if (beep_idx >= 0x0800)
+							{
+								beep_idx = beep_idx - 0x0800;
+							}
+						}
+					}
+					NVIC_DisableIRQ(PORTC_IRQn);
+					waitTimeout = WAIT_TIMEOUT_COUNT;
+					while ((SPI0WritePageRegByteArray(0x03, 0x00, spi_sound, 0x20) == -1) &&  ((waitTimeout--) > 0))
+					{
+						vTaskDelay(0);
+					}
+					NVIC_EnableIRQ(PORTC_IRQn);
+				}
 
-    			sine_beep_duration--;
-    		}
-    		else
-    		{
-    			if (beep)
-    			{
-    				waitTimeout = WAIT_TIMEOUT_COUNT;
-    				NVIC_DisableIRQ(PORTC_IRQn);
-    				while ((SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x00) == -1) &&  ((waitTimeout--) >> 0))
-    				{
-    					vTaskDelay(0);
-    				}
-    				NVIC_EnableIRQ(PORTC_IRQn);
-    				beep = false;
-    			}
-    		}
+				sine_beep_duration--;
+			}
+			else
+			{
+				if (beep)
+				{
+					waitTimeout = WAIT_TIMEOUT_COUNT;
+					NVIC_DisableIRQ(PORTC_IRQn);
+					while ((SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x00) == -1) &&  ((waitTimeout--) >> 0))
+					{
+						vTaskDelay(0);
+					}
+					NVIC_EnableIRQ(PORTC_IRQn);
+					beep = false;
+				}
+			}
 
-    	}
+		}
 
 		vTaskDelay(0);
-    }
+	}
 }

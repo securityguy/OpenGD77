@@ -25,13 +25,16 @@
 #include "clock_config.h"
 #include "MK22F51212.h"
 
+
 /*
  * @brief   Application entry point.
  */
+
 int main(void) {
 	SCB->VTOR = 0x4000;
 
-    BOARD_BootClockHSRUN();
+    BOARD_BootClockHSRUN();// Start in High Speed Run mode (118Mhz)
+//    BOARD_BootClockRUN();// Use lower speeds. See clock_config.c    mcgConfig_BOARD_BootClockRUN
 
     mainTaskInit();
 

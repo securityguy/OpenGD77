@@ -16,12 +16,22 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <AT1846S.h>
-#include <settings.h>
-#include <trx.h>
-#if defined(USE_SEGGER_RTT)
-#include <SeggerRTT/RTT/SEGGER_RTT.h>
+#include "hardware/AT1846S.h"
+#include "functions/settings.h"
+#include "functions/trx.h"
+#if defined(USING_EXTERNAL_DEBUGGER)
+#include "SeggerRTT/RTT/SEGGER_RTT.h"
 #endif
+
+typedef struct
+{
+	bool cached[2];
+	uint8_t lowByte[2];
+	uint8_t highByte[2];
+} RegCache_t;
+
+static RegCache_t registerCache[127];// all values will be initialised to false,0,0 because its a global
+static int currentRegisterBank = 0;
 
 static const uint8_t AT1846InitSettings[][AT1846_BYTES_PER_COMMAND] = {
 		{0x30, 0x00, 0x04}, // Poweron 1846s
@@ -76,6 +86,7 @@ static const uint8_t AT1846PostinitSettings[][AT1846_BYTES_PER_COMMAND] = {
 		};
 
 const uint8_t AT1846FM12P5kHzSettings[][AT1846_BYTES_PER_COMMAND] = {
+		{0x3A, 0x44, 0xCB}, // 12.5 kHz settings
 		{0x15, 0x11, 0x00}, // IF tuning bits (12:9)
 		{0x32, 0x44, 0x95}, // agc target power
 		{0x3A, 0x40, 0xC3}, // modu_det_sel (SQ setting)
@@ -101,6 +112,7 @@ const uint8_t AT1846FM12P5kHzSettings[][AT1846_BYTES_PER_COMMAND] = {
 		};
 
 const uint8_t AT1846FM25kHzSettings[][AT1846_BYTES_PER_COMMAND] = {
+		{0x3A, 0x40, 0xCB}, // 25 kHz settings
 		{0x15, 0x1F, 0x00}, // IF tuning bits (12:9)
 		{0x32, 0x75, 0x64}, // agc target power
 		{0x3A, 0x44, 0xC3}, // modu_det_sel (SQ setting)
@@ -137,19 +149,6 @@ const uint8_t AT1846FMSettings[][AT1846_BYTES_PER_COMMAND] = {
 		};
 
 const uint8_t AT1846DMRSettings[][AT1846_BYTES_PER_COMMAND] = {
-		{0x7F, 0x00, 0x01}, // Goto page 1 registers
-		{0x06, 0x00, 0x14}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x07, 0x02, 0x0C}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x08, 0x02, 0x14}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x09, 0x03, 0x0C}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x0A, 0x03, 0x14}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x0B, 0x03, 0x24}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x0C, 0x03, 0x44}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x0D, 0x13, 0x44}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x0E, 0x1B, 0x44}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x0F, 0x3F, 0x44}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x12, 0xE0, 0xEB}, // AGC Table (recommended value for 12.5kHz bandwidth operation)
-		{0x7F, 0x00, 0x00}, // Go back to page 0 registers
 		{0x15, 0x11, 0x00}, // IF tuning bits (12:9)
 		{0x40, 0x00, 0x31}, // UNDOCUMENTED. THIS IS THE MAGIC REGISTER WHICH ALLOWS LOW FREQ AUDIO BY SETTING THE LS BIT
 		{0x32, 0x44, 0x95}, // agc target power
@@ -170,44 +169,44 @@ const uint8_t AT1846DMRSettings[][AT1846_BYTES_PER_COMMAND] = {
 
 
 
-void I2C_AT1846S_send_Settings(const uint8_t settings[][3],int numSettings)
+void I2C_AT1846S_send_Settings(const uint8_t settings[][AT1846_BYTES_PER_COMMAND], int numSettings)
 {
-	taskENTER_CRITICAL();
+	//taskENTER_CRITICAL();
 	for(int i = 0; i < numSettings; i++)
 	{
-		I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, settings[i][0], settings[i][1],	settings[i][2]);
+		AT1846SWriteReg2byte(settings[i][0], settings[i][1], settings[i][2]);
 	}
-	taskEXIT_CRITICAL();
+	//taskEXIT_CRITICAL();
 }
 
 void AT1846Init(void)
 {
 	// --- start of AT1846_init()
-	taskENTER_CRITICAL();
-	I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x30, 0x00, 0x01); // Soft reset
+	//taskENTER_CRITICAL();
+	AT1846SWriteReg2byte(0x30, 0x00, 0x01); // Soft reset
 	vTaskDelay(portTICK_PERIOD_MS * 50);
 
-	I2C_AT1846S_send_Settings(AT1846InitSettings,sizeof(AT1846InitSettings)/AT1846_BYTES_PER_COMMAND);
+	I2C_AT1846S_send_Settings(AT1846InitSettings, sizeof(AT1846InitSettings) / AT1846_BYTES_PER_COMMAND);
 	vTaskDelay(portTICK_PERIOD_MS * 50);
 
-	I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x30, 0x40, 0xA6); // chip_cal_en Enable calibration
+	AT1846SWriteReg2byte(0x30, 0x40, 0xA6); // chip_cal_en Enable calibration
 	vTaskDelay(portTICK_PERIOD_MS * 100);
 
-	I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x30, 0x40, 0x06); // chip_cal_en Disable calibration
+	AT1846SWriteReg2byte(0x30, 0x40, 0x06); // chip_cal_en Disable calibration
 	vTaskDelay(portTICK_PERIOD_MS * 10);
 	// Calibration end
 	// --- end of AT1846_init()
 
-	I2C_AT1846S_send_Settings(AT1846FM12P5kHzSettings, sizeof(AT1846FM12P5kHzSettings)/AT1846_BYTES_PER_COMMAND);// initially set the bandwidth for 12.5 kHz
+	I2C_AT1846S_send_Settings(AT1846FM12P5kHzSettings, sizeof(AT1846FM12P5kHzSettings) / AT1846_BYTES_PER_COMMAND);// initially set the bandwidth for 12.5 kHz
 
 	AT1846SetClearReg2byteWithMask(0x4e, 0xff, 0x3f, 0x00, 0x80); // Select cdcss mode for tx
-	taskEXIT_CRITICAL();
+	//taskEXIT_CRITICAL();
 	vTaskDelay(portTICK_PERIOD_MS * 200);
 }
 
 void AT1846Postinit(void)
 {
-	I2C_AT1846S_send_Settings(AT1846PostinitSettings,sizeof(AT1846PostinitSettings)/AT1846_BYTES_PER_COMMAND);
+	I2C_AT1846S_send_Settings(AT1846PostinitSettings, sizeof(AT1846PostinitSettings) / AT1846_BYTES_PER_COMMAND);
 }
 
 void AT1846SetBandwidth(void)
@@ -215,77 +214,184 @@ void AT1846SetBandwidth(void)
 	if (trxGetBandwidthIs25kHz())
 	{
 		// 25 kHz settings
-		I2C_AT1846S_send_Settings(AT1846FM25kHzSettings,sizeof(AT1846FM25kHzSettings)/AT1846_BYTES_PER_COMMAND);
-		AT1846SetClearReg2byteWithMask(0x30,0xCF,0x9F,0x30,0x00); // Set the 25Khz Bits and turn off the Rx and Tx
-		AT1846SetClearReg2byteWithMask(0x30,0xFF,0x9F,0x00,0x20); // Turn the Rx On
+		I2C_AT1846S_send_Settings(AT1846FM25kHzSettings, sizeof(AT1846FM25kHzSettings) / AT1846_BYTES_PER_COMMAND);
+		AT1846SetClearReg2byteWithMask(0x30, 0xCF, 0x9F, 0x30, 0x00); // Set the 25Khz Bits and turn off the Rx and Tx
 	}
 	else
 	{
 		// 12.5 kHz settings
-		I2C_AT1846S_send_Settings(AT1846FM12P5kHzSettings, sizeof(AT1846FM12P5kHzSettings)/AT1846_BYTES_PER_COMMAND);
-		AT1846SetClearReg2byteWithMask(0x30,0xCF,0x9F,0x00,0x00); // Clear the 25Khz Bits and turn off the Rx and Tx
-		AT1846SetClearReg2byteWithMask(0x30,0xFF,0x9F,0x00,0x20); // Turn the Rx On
+		I2C_AT1846S_send_Settings(AT1846FM12P5kHzSettings, sizeof(AT1846FM12P5kHzSettings) / AT1846_BYTES_PER_COMMAND);
+		AT1846SetClearReg2byteWithMask(0x30, 0xCF, 0x9F, 0x00, 0x00); // Clear the 25Khz Bits and turn off the Rx and Tx
 	}
+
+	AT1846SetClearReg2byteWithMask(0x30, 0xFF, 0x9F, 0x00, 0x20); // Turn the Rx On
 }
 
 void AT1846SetMode(void)
 {
+	AT1846SetBandwidth();
+
 	if (trxGetMode() == RADIO_MODE_ANALOG)
 	{
-		I2C_AT1846S_send_Settings(AT1846FMSettings, sizeof(AT1846FMSettings)/AT1846_BYTES_PER_COMMAND);
-		if (trxGetBandwidthIs25kHz())
-		{
-			// 25 kHz settings
-			I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x3A, 0x40, 0xCB);
-		}
-		else
-		{
-			// 12.5 kHz settings
-			I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x3A, 0x44, 0xCB);
-		}
+		I2C_AT1846S_send_Settings(AT1846FMSettings, sizeof(AT1846FMSettings) / AT1846_BYTES_PER_COMMAND);
 	}
 	else
 	{
-		AT1846SetClearReg2byteWithMask(0x30,0xCF,0x9F,0x00,0x00); // Clear the 25Khz Bits and turn off the Rx and Tx
-		AT1846SetClearReg2byteWithMask(0x30,0xFF,0x9F,0x00,0x20); // Turn the Rx On
-		I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x3A, 0x44, 0xCB);
-		I2C_AT1846S_send_Settings(AT1846DMRSettings, sizeof(AT1846DMRSettings)/AT1846_BYTES_PER_COMMAND);
+		I2C_AT1846S_send_Settings(AT1846DMRSettings, sizeof(AT1846DMRSettings) / AT1846_BYTES_PER_COMMAND);
 	}
 }
 
 void AT1846ReadVoxAndMicStrength(void)
 {
-	taskENTER_CRITICAL();
-	I2CReadReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x1a, (uint8_t *)&trxTxVox, (uint8_t *)&trxTxMic);
-	taskEXIT_CRITICAL();
+	//taskENTER_CRITICAL();
+	AT1846SReadReg2byte(0x1a, (uint8_t *)&trxTxVox, (uint8_t *)&trxTxMic);
+	//taskEXIT_CRITICAL();
 }
 
 void AT1846ReadRSSIAndNoise(void)
 {
-	taskENTER_CRITICAL();
-	I2CReadReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, 0x1b, (uint8_t *)&trxRxSignal, (uint8_t *)&trxRxNoise);
-	taskEXIT_CRITICAL();
+	//taskENTER_CRITICAL();
+	AT1846SReadReg2byte(0x1b, (uint8_t *)&trxRxSignal, (uint8_t *)&trxRxNoise);
+	//taskEXIT_CRITICAL();
 }
 
 
 int AT1846SetClearReg2byteWithMask(uint8_t reg, uint8_t mask1, uint8_t mask2, uint8_t val1, uint8_t val2)
 {
     status_t status;
+	uint8_t tmp_val1, tmp_val2;
 
-	uint8_t tmp_val1;
-	uint8_t tmp_val2;
-	status = I2CReadReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, reg, &tmp_val1, &tmp_val2);
-    if (status != kStatus_Success)
-    {
-    	return status;
-    }
+	if ((registerCache[reg].cached[currentRegisterBank]))
+	{
+		tmp_val1 = registerCache[reg].highByte[currentRegisterBank];
+		tmp_val2 = registerCache[reg].lowByte[currentRegisterBank];
+	}
+	else
+	{
+		status = AT1846SReadReg2byte(reg, &tmp_val1, &tmp_val2);
+	    if (status != kStatus_Success)
+	    {
+	    	return status;
+	    }
+	}
+
 	tmp_val1 = val1 | (tmp_val1 & mask1);
 	tmp_val2 = val2 | (tmp_val2 & mask2);
-	status = I2CWriteReg2byte(AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT, reg, tmp_val1, tmp_val2);
+	status = AT1846SWriteReg2byte(reg, tmp_val1, tmp_val2);
+
+	return status;
+}
+
+status_t AT1846SReadReg2byte(uint8_t reg, uint8_t *val1, uint8_t *val2)
+{
+    i2c_master_transfer_t masterXfer;
+    status_t status;
+    uint8_t buff[4];// Transfers are always 3 bytes but pad to 4 byte boundary
+
+    if (isI2cInUse)
+    {
+#if defined(USING_EXTERNAL_DEBUGGER) && defined(DEBUG_I2C)
+    	SEGGER_RTT_printf(0, "Clash in read_I2C_reg_2byte (4) with %d\n",isI2cInUse);
+#endif
+    	return kStatus_Success;
+    }
+    isI2cInUse = 4;
+
+	buff[0] = reg;
+
+    memset(&masterXfer, 0, sizeof(masterXfer));
+    masterXfer.slaveAddress = AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT;
+    masterXfer.direction = kI2C_Write;
+    masterXfer.subaddress = 0;
+    masterXfer.subaddressSize = 0;
+    masterXfer.data = buff;
+    masterXfer.dataSize = 1;
+    masterXfer.flags = kI2C_TransferDefaultFlag;
+
+    status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
     if (status != kStatus_Success)
     {
+    	isI2cInUse = 0;
     	return status;
     }
 
-	return kStatus_Success;
+    masterXfer.slaveAddress = AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT;
+    masterXfer.direction = kI2C_Read;
+    masterXfer.subaddress = 0;
+    masterXfer.subaddressSize = 0;
+    masterXfer.data = buff;
+    masterXfer.dataSize = 2;
+    masterXfer.flags = kI2C_TransferDefaultFlag;
+
+    status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
+    if (status != kStatus_Success)
+    {
+    	isI2cInUse = 0;
+    	return status;
+    }
+
+    *val1 = buff[0];
+    *val2 = buff[1];
+
+    isI2cInUse = 0;
+	return status;
+}
+
+status_t AT1846SWriteReg2byte(uint8_t reg, uint8_t val1, uint8_t val2)
+{
+    i2c_master_transfer_t masterXfer;
+    status_t status;
+    uint8_t buff[4];// Transfers are always 3 bytes but pad to 4 byte boundary
+
+    if (reg == 0x7f)
+    {
+    	currentRegisterBank = val2;
+    }
+    else
+    {
+    	if ((registerCache[reg].cached[currentRegisterBank]) && (registerCache[reg].highByte[currentRegisterBank] == val1) &&  (registerCache[reg].lowByte[currentRegisterBank] == val2))
+    	{
+    		//SEGGER_RTT_printf(0, "%d 0x%02x 0x%02x 0x%02x\n",currentRegisterBank,reg,val1,val2);
+    		return kStatus_Success;
+    	}
+    	else
+    	{
+    		//SEGGER_RTT_printf(0, "W            %d 0x%02x 0x%02x 0x%02x\n",currentRegisterBank,reg,val1,val2);
+    	}
+    }
+
+    if (isI2cInUse)
+    {
+#if defined(USING_EXTERNAL_DEBUGGER) && defined(DEBUG_I2C)
+    	SEGGER_RTT_printf(0, "Clash in write_I2C_reg_2byte (3) with %d\n",isI2cInUse);
+#endif
+    	return kStatus_Success;
+    }
+    isI2cInUse = 3;
+
+	buff[0] = reg;
+	buff[1] = val1;
+	buff[2] = val2;
+
+    memset(&masterXfer, 0, sizeof(masterXfer));
+    masterXfer.slaveAddress = AT1846S_I2C_MASTER_SLAVE_ADDR_7BIT;
+    masterXfer.direction = kI2C_Write;
+    masterXfer.subaddress = 0;
+    masterXfer.subaddressSize = 0;
+    masterXfer.data = buff;
+    masterXfer.dataSize = 3;
+    masterXfer.flags = kI2C_TransferDefaultFlag;
+
+    status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
+
+    isI2cInUse = 0;
+
+    if (reg != 0x7F)
+    {
+	    registerCache[reg].cached[currentRegisterBank] = true;
+	    registerCache[reg].highByte[currentRegisterBank] = val1;
+	    registerCache[reg].lowByte[currentRegisterBank] = val2;
+    }
+
+	return status;
 }

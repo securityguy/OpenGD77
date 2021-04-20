@@ -17,11 +17,13 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <calibration.h>
-#include <trx.h>
-
+#include "utils.h"
+#include "functions/calibration.h"
+#include "functions/trx.h"
 
 static const uint32_t CALIBRATION_BASE = 0xF000;
+
+const int MAX_PA_DAC_VALUE = 4095;
 
 typedef struct
 {
@@ -94,7 +96,7 @@ typedef struct
 
 
 #define CALIBRATION_TABLE_LENGTH 0xE0 // Calibration table is 224 bytes long
-static __attribute__((section(".data.$RAM4"))) CalibrationData_t calibrationData;
+static __attribute__((section(".data.$RAM2"))) CalibrationData_t calibrationData;
 
 
 bool calibrationInit(void)
@@ -112,7 +114,7 @@ bool calibrationGetSectionData(CalibrationBand_t band, CalibrationSection_t sect
 		 * only the low 4 bits are used. 1.5dB change per increment 0-331
 		 */
 		case CalibrationSection_DACDATA_SHIFT:
-			o->value = MIN(calibrationData.band[band].DigitalRxAudioGainAndBeepVolume + 1, 31);
+			o->value = SAFE_MIN(calibrationData.band[band].DigitalRxAudioGainAndBeepVolume + 1, 31);
 			o->value |= 0x80;
 			break;
 
@@ -300,49 +302,29 @@ bool calibrationGetSectionData(CalibrationBand_t band, CalibrationSection_t sect
 	return true;
 }
 
-bool calibrationGetPowerForFrequency(int freq, calibrationPowerValues_t *powerSettings)
+void calibrationGetPowerForFrequency(int freq, calibrationPowerValues_t *powerSettings)
 {
-	CalibrationBand_t band = CalibrationBandUHF;
-	int32_t offset;
+	CalibrationBand_t band;
+	int offset;
+	int limit;
 
 	if (trxCurrentBand[TRX_TX_FREQ_BAND] == RADIO_BAND_UHF)
 	{
-		offset = (freq - RADIO_FREQUENCY_BANDS[RADIO_BAND_UHF].calTableMinFreq) / 500000;
-		if (offset < 0)
-		{
-			offset = 0;
-		}
-		else
-		{
-			if (offset > 15)
-			{
-				offset = 15;
-			}
-		}
+		band = CalibrationBandUHF;
+		offset = (freq - RADIO_HARDWARE_FREQUENCY_BANDS[RADIO_BAND_UHF].calTableMinFreq) / 500000;
+		limit = 15;
 	}
 	else
 	{
 		band = CalibrationBandVHF;
-		offset = (freq - RADIO_FREQUENCY_BANDS[RADIO_BAND_VHF].calTableMinFreq) / 500000;;
-		if (offset < 0)
-		{
-			offset = 0;
-		}
-		else
-		{
-			if (offset > 7)
-			{
-				offset = 7;
-			}
-		}
+		offset = (freq - RADIO_HARDWARE_FREQUENCY_BANDS[RADIO_BAND_VHF].calTableMinFreq) / 500000;
+		limit = 7;
 	}
 
+	offset = CLAMP(offset, 0, limit);
 
-	const int POWER_CAL_MULTIPLIER = 16;
-	powerSettings->lowPower  = (calibrationData.band[band].PowerSettings[offset][0] * 16);
-	powerSettings->highPower = (calibrationData.band[band].PowerSettings[offset][1] * POWER_CAL_MULTIPLIER);
-
-	return true;
+	powerSettings->lowPower  = (calibrationData.band[band].PowerSettings[offset][0] * MAX_PA_DAC_VALUE) / 255;// PA drive DAC is 12 bit (0 - 4095). Calibration data range is 0 - 255
+	powerSettings->highPower = (calibrationData.band[band].PowerSettings[offset][1] * MAX_PA_DAC_VALUE) / 255;// PA drive DAC is 12 bit (0 - 4095). Calibration data range is 0 - 255
 }
 
 bool calibrationGetRSSIMeterParams(calibrationRSSIMeter_t *rssiMeterValues)

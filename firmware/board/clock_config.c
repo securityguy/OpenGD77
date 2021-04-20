@@ -46,6 +46,7 @@ board: FRDM-K22F
 
 #include "fsl_smc.h"
 #include "clock_config.h"
+#include "interfaces/clockManager.h"
 
 /*******************************************************************************
  * Definitions
@@ -142,8 +143,15 @@ const mcg_config_t mcgConfig_BOARD_BootClockRUN = {
     .pll0Config =
         {
             .enableMode = MCG_PLL_DISABLE, /* MCGPLLCLK disabled */
-            .prdiv = 0x3U,                 /* PLL Reference divider: divided by 4 */
-            .vdiv = 0x10U,                 /* VCO divider: multiplied by 40 */
+#if defined(PLATFORM_DM1801) || defined(PLATFORM_RD5R)
+			// Currently need to tweak the Rx Clock speed on the DM1801 and RD5R, otherwise for some reason the DMR Tx audio doesn't work
+			// due to timing problems with the compression of the raw mic audio to AMBE
+            .prdiv = 6,                 /* PLL Reference divider: divided by 1 + prdiv */
+            .vdiv = 3,                 /* VCO divider: multiplied by 24 + vdiv */
+#else
+            .prdiv = 6,                 /* PLL Reference divider: divided by 1 + prdiv */
+            .vdiv = 3,                 /* VCO divider: multiplied by 24 + vdiv */
+#endif
         },
 };
 const sim_clock_config_t simConfig_BOARD_BootClockRUN = {
@@ -152,7 +160,7 @@ const sim_clock_config_t simConfig_BOARD_BootClockRUN = {
     .clkdiv1 = 0x1230000U,                    /* SIM_CLKDIV1 - OUTDIV1: /1, OUTDIV2: /2, OUTDIV3: /3, OUTDIV4: /4 */
 };
 const osc_config_t oscConfig_BOARD_BootClockRUN = {
-    .freq = BOARD_XTAL0_CLK_HZ,       /* Oscillator frequency:  */
+    .freq = BOARD_XTAL0_CLK_HZ,                 /* Oscillator frequency:  */
     .capLoad = (OSC_CAP0P),           /* Oscillator capacity load: 0pF */
     .workMode = kOSC_ModeOscLowPower, /* Oscillator low power */
     .oscerConfig = {
@@ -182,7 +190,10 @@ void BOARD_BootClockRUN(void)
     /* Set the clock configuration in SIM module. */
     CLOCK_SetSimConfig(&simConfig_BOARD_BootClockRUN);
     /* Set SystemCoreClock variable. */
-    SystemCoreClock = BOARD_BOOTCLOCKRUN_CORE_CLOCK;
+    //SystemCoreClock = BOARD_BOOTCLOCKRUN_CORE_CLOCK;
+    SystemCoreClock = CLOCK_GetFreq(kCLOCK_CoreSysClk);
+
+    clockManagerCurrentRunMode = kAPP_PowerModeHsrun;
 }
 
 /*******************************************************************************
@@ -278,6 +289,7 @@ void BOARD_BootClockVLPR(void)
     }
     /* Set SystemCoreClock variable. */
     SystemCoreClock = BOARD_BOOTCLOCKVLPR_CORE_CLOCK;
+    clockManagerCurrentRunMode = kAPP_PowerModeVlpr;
 }
 
 /*******************************************************************************
@@ -344,8 +356,8 @@ const mcg_config_t mcgConfig_BOARD_BootClockHSRUN = {
     .pll0Config =
         {
             .enableMode = MCG_PLL_DISABLE, /* MCGPLLCLK disabled */
-            .prdiv = 0x3U,                 /* PLL Reference divider: divided by 4 */
-            .vdiv = 0x5U,                  /* VCO divider: multiplied by 29 */
+            .prdiv = 0x2U,                 /* PLL Reference divider: divided by  1 + prdiv */
+			.vdiv = 5U,                  /* VCO divider: multiplied by 24 +  vdiv*/
         },
 };
 const sim_clock_config_t simConfig_BOARD_BootClockHSRUN = {
@@ -354,7 +366,7 @@ const sim_clock_config_t simConfig_BOARD_BootClockHSRUN = {
     .clkdiv1 = 0x1340000U,                    /* SIM_CLKDIV1 - OUTDIV1: /1, OUTDIV2: /2, OUTDIV3: /4, OUTDIV4: /5 */
 };
 const osc_config_t oscConfig_BOARD_BootClockHSRUN = {
-    .freq = BOARD_XTAL0_CLK_HZ,                 /* Oscillator frequency:  */
+    .freq = BOARD_XTAL0_CLK_HZ,                 /* Oscillator frequency: 8000000Hz */
     .capLoad = (OSC_CAP0P),           /* Oscillator capacity load: 0pF */
     .workMode = kOSC_ModeOscLowPower, /* Oscillator low power */
     .oscerConfig = {
@@ -402,5 +414,8 @@ void BOARD_BootClockHSRUN(void)
     /* Set the clock configuration in SIM module. */
     CLOCK_SetSimConfig(&simConfig_BOARD_BootClockHSRUN);
     /* Set SystemCoreClock variable. */
-    SystemCoreClock = BOARD_BOOTCLOCKHSRUN_CORE_CLOCK;
+//    SystemCoreClock = BOARD_BOOTCLOCKHSRUN_CORE_CLOCK;
+//    SystemCoreClockUpdate(); // alternative way to get the clock freq
+    SystemCoreClock = CLOCK_GetFreq(kCLOCK_CoreSysClk);// Use same method as the power_manager
+    clockManagerCurrentRunMode = kAPP_PowerModeHsrun;
 }

@@ -17,28 +17,24 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_SETTINGS_H_
-#define _FW_SETTINGS_H_
+#ifndef _OPENGD77_SETTINGS_H_
+#define _OPENGD77_SETTINGS_H_
 
-#include "codeplug.h"
-#include "trx.h"
+#include "functions/codeplug.h"
+#include "functions/trx.h"
 
 enum USB_MODE { USB_MODE_CPS, USB_MODE_HOTSPOT, USB_MODE_DEBUG };
 enum SETTINGS_UI_MODE { SETTINGS_CHANNEL_MODE = 0, SETTINGS_VFO_A_MODE, SETTINGS_VFO_B_MODE };
-enum BACKLIGHT_MODE { BACKLIGHT_MODE_AUTO = 0, BACKLIGHT_MODE_SQUELCH, BACKLIGHT_MODE_MANUAL, BACKLIGHT_MODE_NONE };
+enum BACKLIGHT_MODE { BACKLIGHT_MODE_AUTO = 0, BACKLIGHT_MODE_SQUELCH, BACKLIGHT_MODE_MANUAL, BACKLIGHT_MODE_BUTTONS, BACKLIGHT_MODE_NONE };
 enum HOTSPOT_TYPE { HOTSPOT_TYPE_OFF = 0, HOTSPOT_TYPE_MMDVM, HOTSPOT_TYPE_BLUEDV };
 enum CONTACT_DISPLAY_PRIO { CONTACT_DISPLAY_PRIO_CC_DB_TA = 0, CONTACT_DISPLAY_PRIO_DB_CC_TA, CONTACT_DISPLAY_PRIO_TA_CC_DB, CONTACT_DISPLAY_PRIO_TA_DB_CC };
 enum SCAN_MODE { SCAN_MODE_HOLD = 0, SCAN_MODE_PAUSE, SCAN_MODE_STOP };
 enum SPLIT_CONTACT { SPLIT_CONTACT_SINGLE_LINE_ONLY = 0, SPLIT_CONTACT_ON_TWO_LINES, SPLIT_CONTACT_AUTO };
-enum ALLOW_PRIVATE_CALLS_MODE { ALLOW_PRIVATE_CALLS_OFF = 0, ALLOW_PRIVATE_CALLS_ON, ALLOW_PRIVATE_CALLS_PTT};//, ALLOW_PRIVATE_CALLS_AUTO };
+enum ALLOW_PRIVATE_CALLS_MODE { ALLOW_PRIVATE_CALLS_OFF = 0, ALLOW_PRIVATE_CALLS_ON, ALLOW_PRIVATE_CALLS_PTT };//, ALLOW_PRIVATE_CALLS_AUTO };
+enum BAND_LIMITS_ENUM { BAND_LIMITS_NONE = 0 , BAND_LIMITS_ON_LEGACY_DEFAULT, BAND_LIMITS_FROM_CPS };
+enum INFO_ON_SCREEN { INFO_ON_SCREEN_OFF = 0x00, INFO_ON_SCREEN_TS = 0x01, INFO_ON_SCREEN_PWR = 0x02, INFO_ON_SCREEN_BOTH = 0x03 };
 
-typedef enum
-{
-     CHANNEL_VFO_A = 0,
-     CHANNEL_VFO_B,
-     CHANNEL_CHANNEL
-} Channel_t;
-
+extern const int ECO_LEVEL_MAX;
 extern const uint8_t BEEP_TX_NONE;
 extern const uint8_t BEEP_TX_START;
 extern const uint8_t BEEP_TX_STOP;
@@ -46,53 +42,67 @@ extern const uint8_t BEEP_TX_STOP;
 extern int settingsCurrentChannelNumber;
 extern int *nextKeyBeepMelody;
 extern struct_codeplugChannel_t settingsVFOChannel[2];
+extern struct_codeplugGeneralSettings_t settingsCodeplugGeneralSettings;
+
+typedef enum
+{
+	BIT_INVERSE_VIDEO               = (1 << 0),
+	BIT_PTT_LATCH                   = (1 << 1),
+	BIT_TRANSMIT_TALKER_ALIAS       = (1 << 2),
+	BIT_BATTERY_VOLTAGE_IN_HEADER   = (1 << 3),
+	BIT_SETTINGS_UPDATED            = (1 << 4),
+	BIT_TX_RX_FREQ_LOCK             = (1 << 5),
+	BIT_ALL_LEDS_DISABLED           = (1 << 6)
+} bitfieldOptions_t;
 
 typedef struct
 {
 	int 			magicNumber;
+	uint32_t		overrideTG;
+	uint32_t		vfoScanLow[2]; // low frequency for VFO Scanning
+	uint32_t		vfoScanHigh[2]; // High frequency for VFO Scanning
 	int16_t			currentChannelIndexInZone;
 	int16_t			currentChannelIndexInAllZone;
-	int16_t			currentIndexInTRxGroupList[3];// Current Channel, VFO A and VFO B
+	int16_t			currentIndexInTRxGroupList[3]; // Current Channel, VFO A and VFO B
 	int16_t			currentZone;
-	uint8_t			backlightMode; // see BACKLIGHT_MODE enum
-	uint8_t			backLightTimeout;//0 = never timeout. 1 - 255 time in seconds
-	int8_t			displayContrast;
-	uint8_t			initialMenuNumber;
-	int8_t			displayBacklightPercentage;
-	int8_t			displayBacklightPercentageOff; // backlight level when "off"
-	bool			displayInverseVideo;
-	bool			useCalibration;
-	bool			txFreqLimited;
-	bool			pttToggle;
-	uint8_t			scanModePause;
-	bool			transmitTalkerAlias;
-	uint16_t		txPowerLevel;
-	uint32_t		overrideTG;
-	uint8_t			txTimeoutBeepX5Secs;
-	uint8_t			beepVolumeDivider;
-	uint8_t			micGainDMR;
-	uint8_t			micGainFM;
-	uint8_t			tsManualOverride;
 	uint16_t		keypadTimerLong;
 	uint16_t		keypadTimerRepeat;
+	uint16_t		userPower;
+	uint16_t		bitfieldOptions; // see bitfieldOptions_t
+	uint8_t			txPowerLevel;
+	uint8_t			txTimeoutBeepX5Secs;
+	uint8_t			beepVolumeDivider;
+	uint8_t			beepOptions;
+	uint8_t			micGainDMR;
+	uint8_t			micGainFM;
+	uint8_t			backlightMode; // see BACKLIGHT_MODE enum
+	uint8_t			backLightTimeout; // 0 = never timeout. 1 - 255 time in seconds
+	int8_t			displayContrast;
+	int8_t			displayBacklightPercentage;
+	int8_t			displayBacklightPercentageOff; // backlight level when "off"
+	uint8_t			initialMenuNumber;
+	uint8_t			extendedInfosOnScreen;
+	uint8_t			txFreqLimited;
+	uint8_t			scanModePause;
+	uint8_t			scanDelay;
+	uint8_t			scanStepTime;
+	uint8_t			squelchDefaults[RADIO_BANDS_TOTAL_NUM]; // VHF, 200Mhz and UHF
 	uint8_t			currentVFONumber;
+	uint16_t		tsManualOverride;
 	uint8_t			dmrDestinationFilter;
 	uint8_t			dmrCaptureTimeout;
+	uint8_t			dmrCcTsFilter;
 	uint8_t			analogFilterLevel;
 	uint8_t			languageIndex;
-	uint8_t			scanDelay;
-	uint8_t			squelchDefaults[RADIO_BANDS_TOTAL_NUM];// VHF,200Mhz and UHF
 	uint8_t			hotspotType;
-    uint8_t    		privateCalls;
-	uint32_t		vfoScanLow[2];                  //low frequency for VFO Scanning
-	uint32_t		vfoScanHigh[2];                 //High frequency for VFO Scanning
+	uint8_t    		privateCalls;
 	uint8_t			contactDisplayPriority;
 	uint8_t			splitContact;
-	uint8_t			beepOptions;
 	uint8_t			voxThreshold; // 0: disabled
 	uint8_t			voxTailUnits; // 500ms units
 	uint8_t			audioPromptMode;
-	uint8_t			dmrCcTsFilter;
+	int8_t			temperatureCalibration;// Units of 0.5 deg C
+	uint8_t			ecoLevel;// Power saving / economy level
 } settingsStruct_t;
 
 typedef enum DMR_DESTINATION_FILTER_TYPE
@@ -118,22 +128,12 @@ typedef enum DMR_CCTS_FILTER_TYPE
 	NUM_DMR_CCTS_FILTER_LEVELS
 } dmrCcTsFilter_t;
 
-
-
 typedef enum ANALOG_FILTER_TYPE
 {
 	ANALOG_FILTER_NONE = 0,
-	ANALOG_FILTER_CTCSS,
+	ANALOG_FILTER_CSS,
 	NUM_ANALOG_FILTER_LEVELS
 } analogFilter_t;
-
-typedef enum TONE_SCAN_CSS
-{
-	TONE_SCAN_ALL = 0,
-	TONE_SCAN_CTCSS,
-	TONE_SCAN_DCS,
-	TONE_SCAN_DCS_INVERTED
-} toneScanCSS_t;
 
 typedef enum AUDIO_PROMPT_MODE
 {
@@ -153,6 +153,18 @@ typedef enum PROMPT_AUTOPLAY_THRESHOLD
 	PROMPT_THRESHOLD_NEVER_PLAY_IMMEDIATELY
 } audioPromptThreshold_t;
 
+typedef struct
+{
+	bool 	isEnabled;
+	int 	DMRTimeout;
+	int 	savedRadioMode;
+	uint8_t savedSquelch;
+	int 	savedDMRCcTsFilter;
+	int 	savedDMRDestinationFilter;
+	int 	savedDMRCc;
+	int 	savedDMRTs;
+} monitorModeSettingsStruct_t;
+
 extern settingsStruct_t nonVolatileSettings;
 extern struct_codeplugChannel_t *currentChannelData;
 extern struct_codeplugChannel_t channelScreenChannelData;
@@ -160,6 +172,7 @@ extern struct_codeplugContact_t contactListContactData;
 extern struct_codeplugDTMFContact_t contactListDTMFContactData;
 extern int contactListContactIndex;
 extern int settingsUsbMode;
+extern monitorModeSettingsStruct_t monitorModeData;
 
 // Do not use the following settingsSet<TYPE>(...) functions, use settingsSet() instead
 void settingsSetBOOL(bool *s, bool v);
@@ -226,6 +239,9 @@ void settingsDecUINT32(uint32_t *s, uint32_t v);
 	)(&S, V)
 #endif
 
+void settingsSetOptionBit(bitfieldOptions_t bit, bool set);
+bool settingsIsOptionBitSet(bitfieldOptions_t bit);
+
 void settingsSetDirty(void);
 void settingsSetVFODirty(void);
 void settingsSaveIfNeeded(bool immediately);
@@ -234,7 +250,7 @@ bool settingsLoadSettings(void);
 void settingsRestoreDefaultSettings(void);
 void settingsEraseCustomContent(void);
 void settingsInitVFOChannel(int vfoNumber);
-bool settingsPlatformSpecificSaveSettings(bool includeVFOs);
 void enableVoicePromptsIfLoaded(void);
+int settingsGetScanStepTimeMilliseconds(void);
 
 #endif

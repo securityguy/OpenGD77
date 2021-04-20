@@ -17,8 +17,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_MBELIB_H_
-#define _FW_MBELIB_H_
+#ifndef _OPENGD77_MBELIB_H_
+#define _OPENGD77_MBELIB_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,4 +30,4 @@ int mbe_eccAmbe3600x2450Data(char ambe_fr[4][24], char *ambe_d);
 void mbe_demodulateAmbe3600x2450Data(char ambe_fr[4][24]);
 void prepare_framedata(uint8_t *indata, char *ambe_d, int *errs, int *errs2);
 
-#endif /* _FW_MBELIB_H_ */
+#endif /* _OPENGD77_MBELIB_H_ */

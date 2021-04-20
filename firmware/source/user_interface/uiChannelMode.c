@@ -15,26 +15,24 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <codeplug.h>
-#include <settings.h>
-#include <trx.h>
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiUtilities.h>
-#include <user_interface/uiLocalisation.h>
-#include <functions/voicePrompts.h>
-
-static void handleEvent(uiEvent_t *ev);
-static void loadChannelData(bool useChannelDataInMemory, bool loadVoicePromptAnnouncement);
-static void scanning(void);
+#include "functions/codeplug.h"
+#include "functions/settings.h"
+#include "functions/trx.h"
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiUtilities.h"
+#include "user_interface/uiLocalisation.h"
+#include "functions/voicePrompts.h"
+#include "functions/ticks.h"
 
 #if defined(PLATFORM_GD77S)
 typedef enum
 {
-	GD77S_UIMODE_CHANNEL,
+	GD77S_UIMODE_TG_OR_SQUELCH,
 	GD77S_UIMODE_SCAN,
 	GD77S_UIMODE_TS,
 	GD77S_UIMODE_CC,
 	GD77S_UIMODE_FILTER,
+	GD77S_UIMODE_DTMF_CONTACTS,
 	GD77S_UIMODE_ZONE,
 	GD77S_UIMODE_POWER,
 	GD77S_UIMODE_MAX
@@ -45,13 +43,17 @@ typedef struct
 	bool             firstRun;
 	GD77S_UIMODES_t  uiMode;
 	bool             channelOutOfBounds;
+	uint16_t         dtmfListSelected;
+	int32_t          dtmfListCount;
 } GD77SParameters_t;
 
 static GD77SParameters_t GD77SParameters =
 {
 		.firstRun = true,
-		.uiMode = GD77S_UIMODE_CHANNEL,
-		.channelOutOfBounds = false
+		.uiMode = GD77S_UIMODE_TG_OR_SQUELCH,
+		.channelOutOfBounds = false,
+		.dtmfListSelected = 0,
+		.dtmfListCount = 0
 };
 
 static void buildSpeechUiModeForGD77S(GD77S_UIMODES_t uiMode);
@@ -64,39 +66,31 @@ static uint16_t getCurrentChannelInCurrentZoneForGD77S(void);
 
 static void selectPrevNextZone(bool nextZone);
 static void handleUpKey(uiEvent_t *ev);
+#endif // PLATFORM_GD77S
+
+static void handleEvent(uiEvent_t *ev);
+static void loadChannelData(bool useChannelDataInMemory, bool loadVoicePromptAnnouncement);
+
 static void updateQuickMenuScreen(bool isFirstRun);
 static void handleQuickMenuEvent(uiEvent_t *ev);
 
-#endif // PLATFORM_GD77S
+static void scanning(void);
+static void scanStart(bool longPressBeep);
+static void scanSearchForNextChannel(void);
+static void scanApplyNextChannel(void);
 
-static void startScan(bool longPressBeep);
-static void uiChannelUpdateTrxID(void);
-static void searchNextChannel(void);
-static void setNextChannel(void);
+static void updateTrxID(void);
 
 static char currentZoneName[17];
 static int directChannelNumber = 0;
 
-int currentChannelNumber = 0;
-static bool isDisplayingQSOData = false;
-static bool isTxRxFreqSwap = false;
-
-static bool displayChannelSettings;
-static bool reverseRepeater;
-static int prevDisplayQSODataState;
-
-static struct_codeplugChannel_t channelNextChannelData={ .rxFreq = 0 };
+static struct_codeplugChannel_t channelNextChannelData = { .rxFreq = 0 };
 static bool nextChannelReady = false;
 static int nextChannelIndex = 0;
+static bool quickmenuChannelFromVFOHandled = false; // Quickmenu new channel confirmation window
 
 static menuStatus_t menuChannelExitStatus = MENU_STATUS_SUCCESS;
 static menuStatus_t menuQuickChannelExitStatus = MENU_STATUS_SUCCESS;
-
-#if defined(PLATFORM_RD5R)
-static const int  CH_NAME_Y_POS = 40;
-#else
-static const int  CH_NAME_Y_POS = 50;
-#endif
 
 menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 {
@@ -108,35 +102,45 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 		voicePromptsTerminate();
 #endif
 
-		settingsSet(nonVolatileSettings.initialMenuNumber, UI_CHANNEL_MODE);// This menu.
-		displayChannelSettings = false;
-		reverseRepeater = false;
+		settingsSet(nonVolatileSettings.initialMenuNumber, (uint8_t) UI_CHANNEL_MODE);// This menu.
+		uiDataGlobal.displayChannelSettings = false;
+		uiDataGlobal.reverseRepeater = false;
 		nextChannelReady = false;
-		displaySquelch = false;
-
+		uiDataGlobal.displaySquelch = false;
+		uiDataGlobal.Scan.refreshOnEveryStep = false;
 
 		// We're in digital mode, RXing, and current talker is already at the top of last heard list,
 		// hence immediately display complete contact/TG info on screen
 		// This mostly happens when getting out of a menu.
-		menuDisplayQSODataState = (isQSODataAvailableForCurrentTalker() ? QSO_DISPLAY_CALLER_DATA : QSO_DISPLAY_DEFAULT_SCREEN);
+		uiDataGlobal.displayQSOState = (isQSODataAvailableForCurrentTalker() ? QSO_DISPLAY_CALLER_DATA : QSO_DISPLAY_DEFAULT_SCREEN);
 
 		lastHeardClearLastID();
-		prevDisplayQSODataState = QSO_DISPLAY_IDLE;
+		uiDataGlobal.displayQSOStatePrev = QSO_DISPLAY_IDLE;
 		currentChannelData = &channelScreenChannelData;// Need to set this as currentChannelData is used by functions called by loadChannelData()
 
-		if (channelScreenChannelData.rxFreq != 0)
+		if (currentChannelData->rxFreq != 0)
 		{
 			loadChannelData(true, false);
 		}
 		else
 		{
-			isTxRxFreqSwap = false;
 			codeplugZoneGetDataForNumber(nonVolatileSettings.currentZone, &currentZone);
 			codeplugUtilConvertBufToString(currentZone.name, currentZoneName, 16);// need to convert to zero terminated string
 			loadChannelData(false, false);
 		}
 
 #if defined(PLATFORM_GD77S)
+		trxSetPowerFromLevel(nonVolatileSettings.txPowerLevel);// ensure the power level is available for the Power announcement
+
+		//Reset to first UiMode if the radio is in Analog mode and the current UiMode only applies to DMR
+		if ((trxGetMode() == RADIO_MODE_ANALOG) &&
+			((GD77SParameters.uiMode == GD77S_UIMODE_TS ) ||
+			(GD77SParameters.uiMode == GD77S_UIMODE_CC ) ||
+			(GD77SParameters.uiMode == GD77S_UIMODE_FILTER )))
+		{
+			GD77SParameters.uiMode = GD77S_UIMODE_TG_OR_SQUELCH;
+		}
+
 		// Ensure the correct channel is loaded, on the very first run
 		if (GD77SParameters.firstRun)
 		{
@@ -145,23 +149,24 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 				GD77SParameters.firstRun = false;
 				checkAndUpdateSelectedChannelForGD77S(rotarySwitchGetPosition(), true);
 			}
+
+
+			GD77SParameters.dtmfListCount = codeplugDTMFContactsGetCount();
 		}
 #endif
-		displayLightTrigger();
-
 		uiChannelModeUpdateScreen(0);
 
-		if (scanActive == false)
+		if (uiDataGlobal.Scan.active == false)
 		{
-			scanState = SCAN_SCANNING;
+			uiDataGlobal.Scan.state = SCAN_SCANNING;
 		}
 
 		// Need to do this last, as other things in the screen init, need to know whether the main screen has just changed
-		if (inhibitInitialVoicePrompt)
+		if (uiDataGlobal.VoicePrompts.inhibitInitial)
 		{
-			inhibitInitialVoicePrompt = false;
+			uiDataGlobal.VoicePrompts.inhibitInitial = false;
 		}
-		menuControlData.stack[menuControlData.stackPosition + 1] = 0;// used to determine if this screen has just been loaded after Tx ended (in loadChannelData()))
+
 		menuChannelExitStatus = MENU_STATUS_SUCCESS; // Due to Orange Quick Menu
 	}
 	else
@@ -169,7 +174,7 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 		menuChannelExitStatus = MENU_STATUS_SUCCESS;
 
 #if defined(PLATFORM_GD77S)
-		heartBeatActivityForGD77S(ev);
+		uiChannelModeHeartBeatActivityForGD77S(ev);
 #endif
 
 		if (ev->events == NO_EVENT)
@@ -177,7 +182,7 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 #if defined(PLATFORM_GD77S)
 			// Just ensure rotary's selected channel is matching the already loaded one
 			// as rotary selector could be turned while the GD is OFF, or in hotspot mode.
-			if ((scanActive == false) && ((rotarySwitchGetPosition() != getCurrentChannelInCurrentZoneForGD77S()) || (GD77SParameters.firstRun == true)))
+			if ((uiDataGlobal.Scan.active == false) && ((rotarySwitchGetPosition() != getCurrentChannelInCurrentZoneForGD77S()) || (GD77SParameters.firstRun == true)))
 			{
 				if (voicePromptsIsPlaying() == false)
 				{
@@ -194,21 +199,17 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 #endif
 
 			// is there an incoming DMR signal
-			if (menuDisplayQSODataState != QSO_DISPLAY_IDLE)
+			if (uiDataGlobal.displayQSOState != QSO_DISPLAY_IDLE)
 			{
 				uiChannelModeUpdateScreen(0);
 			}
 			else
 			{
 				// Clear squelch region
-				if (displaySquelch && ((ev->time - sqm) > 1000))
+				if (uiDataGlobal.displaySquelch && ((ev->time - sqm) > 1000))
 				{
-					displaySquelch = false;
-#if defined(PLATFORM_RD5R)
-					ucFillRect(0, SQUELCH_BAR_Y_POS, DISPLAY_SIZE_X, 9, true);
-#else
-					ucClearRows(2, 4, false);
-#endif
+					uiDataGlobal.displaySquelch = false;
+					uiUtilityDisplayInformation(NULL, DISPLAY_INFO_SQUELCH_CLEAR_AREA, -1);
 					ucRenderRows(2, 4);
 				}
 
@@ -216,27 +217,27 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 				{
 					m = ev->time;
 
-					if (scanActive && (scanState == SCAN_PAUSED))
+					if (uiDataGlobal.Scan.active && (uiDataGlobal.Scan.state == SCAN_PAUSED))
 					{
 #if defined(PLATFORM_RD5R)
 						ucClearRows(0, 1, false);
 #else
 						ucClearRows(0, 2, false);
 #endif
-						menuUtilityRenderHeader();
+						uiUtilityRenderHeader(false);
 					}
 					else
 					{
-						drawRSSIBarGraph();
+						uiUtilityDrawRSSIBarGraph();
 					}
 
 					// Only render the second row which contains the bar graph, if we're not scanning,
 					// as there is no need to redraw the rest of the screen
-					ucRenderRows(((scanActive && (scanState == SCAN_PAUSED)) ? 0 : 1), 2);
+					ucRenderRows(((uiDataGlobal.Scan.active && (uiDataGlobal.Scan.state == SCAN_PAUSED)) ? 0 : 1), 2);
 				}
 			}
 
-			if (scanActive == true)
+			if (uiDataGlobal.Scan.active == true)
 			{
 				scanning();
 			}
@@ -254,6 +255,11 @@ menuStatus_t uiChannelMode(uiEvent_t *ev, bool isFirstRun)
 				handleEvent(ev);
 			}
 		}
+
+#if defined(PLATFORM_GD77S)
+		dtmfSequenceTick(false);
+#endif
+
 	}
 	return menuChannelExitStatus;
 }
@@ -265,77 +271,116 @@ uint16_t byteSwap16(uint16_t in)
 }
 #endif
 
-static void searchNextChannel(void)
+static bool canCurrentZoneBeScanned(int *availableChannels)
 {
-	//bool allZones = strcmp(currentZoneName,currentLanguage->all_channels) == 0;
+	int enabledChannels = 0;
+	int chanIdx = (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone) ? nonVolatileSettings.currentChannelIndexInAllZone : currentZone.channels[nonVolatileSettings.currentChannelIndexInZone]);
+
+	if (currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone > 1)
+	{
+		int chansInZone = currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone;
+
+		if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
+		{
+			do
+			{
+				do
+				{
+					chanIdx = ((((chanIdx - 1) + 1) % currentZone.NOT_IN_CODEPLUGDATA_highestIndex) + 1);
+				} while (!codeplugAllChannelsIndexIsInUse(chanIdx));
+
+				chansInZone--;
+				// Get flag4 only
+				codeplugChannelGetDataWithOffsetAndLengthForIndex(chanIdx, &channelNextChannelData, CODEPLUG_CHANNEL_FLAG4_OFFSET, 1);
+
+				if (CODEPLUG_CHANNEL_IS_FLAG_SET(&channelNextChannelData, CODEPLUG_CHANNEL_FLAG_ALL_SKIP) == false)
+				{
+					enabledChannels++;
+				}
+
+			} while (chansInZone > 0);
+		}
+		else
+		{
+			do
+			{
+				chanIdx = ((chanIdx + 1) % currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone);
+
+				chansInZone--;
+				// Get flag4 only
+				codeplugChannelGetDataWithOffsetAndLengthForIndex(currentZone.channels[chanIdx], &channelNextChannelData, CODEPLUG_CHANNEL_FLAG4_OFFSET, 1);
+
+				if (CODEPLUG_CHANNEL_IS_FLAG_SET(&channelNextChannelData, CODEPLUG_CHANNEL_FLAG_ZONE_SKIP) == false)
+				{
+					enabledChannels++;
+				}
+
+			} while (chansInZone > 0);
+		}
+	}
+
+	*availableChannels = enabledChannels;
+
+	return (enabledChannels > 1);
+}
+
+static void scanSearchForNextChannel(void)
+{
 	int channel = 0;
 
-	if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+	// All Channels virtual zone
+	if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 	{
 		do
 		{
-			nextChannelIndex += scanDirection;
-			if (scanDirection == 1)
+			do
 			{
-				if (nextChannelIndex > CODEPLUG_CONTACTS_MAX)
-				{
-					nextChannelIndex = CODEPLUG_CONTACTS_MIN;
-				}
-			}
-			else
-			{
-				// Note this is inefficient check all the index down from 1024 until it gets to the first valid index from the end.
-				// To improve this. Highest valid channel number would need to be found and cached when the radio boots up
-				if (nextChannelIndex < CODEPLUG_CONTACTS_MIN)
-				{
-					nextChannelIndex = CODEPLUG_CONTACTS_MAX;
-				}
-			}
-		} while(!codeplugChannelIndexIsValid(nextChannelIndex));
+				// rollover (up/down) CODEPLUG_CHANNELS_MIN .. currentZone.NOT_IN_CODEPLUGDATA_highestIndex
+				nextChannelIndex = ((uiDataGlobal.Scan.direction == 1) ?
+						((((nextChannelIndex - 1) + 1) % currentZone.NOT_IN_CODEPLUGDATA_highestIndex) + 1) :
+						((((nextChannelIndex - 1) + currentZone.NOT_IN_CODEPLUGDATA_highestIndex - 1) % currentZone.NOT_IN_CODEPLUGDATA_highestIndex) + 1));
+			} while (!codeplugAllChannelsIndexIsInUse(nextChannelIndex));
+
+			// Check if the channel is skipped.
+			// Get flag4 only
+			codeplugChannelGetDataWithOffsetAndLengthForIndex(nextChannelIndex, &channelNextChannelData, CODEPLUG_CHANNEL_FLAG4_OFFSET, 1);
+
+		} while (CODEPLUG_CHANNEL_IS_FLAG_SET(&channelNextChannelData, CODEPLUG_CHANNEL_FLAG_ALL_SKIP));
 
 		channel = nextChannelIndex;
 		codeplugChannelGetDataForIndex(nextChannelIndex, &channelNextChannelData);
 	}
 	else
 	{
-		nextChannelIndex += scanDirection;
-		if (scanDirection == 1)
+		do
 		{
-			if (nextChannelIndex > currentZone.NOT_IN_MEMORY_numChannelsInZone - 1)
-			{
-				nextChannelIndex = 0;
-			}
+			// rollover (up/down) 0 .. (currentZone.NOT_IN_CODEPLUGDATA_highestIndex - 1)
+			nextChannelIndex = ((uiDataGlobal.Scan.direction == 1) ?
+					((nextChannelIndex + 1) % currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone) :
+					((nextChannelIndex + currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone - 1) % currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone));
+
+			// Check if the channel is skipped.
+			// Get flag4 only
+			codeplugChannelGetDataWithOffsetAndLengthForIndex(currentZone.channels[nextChannelIndex], &channelNextChannelData, CODEPLUG_CHANNEL_FLAG4_OFFSET, 1);
+
+		} while (CODEPLUG_CHANNEL_IS_FLAG_SET(&channelNextChannelData, CODEPLUG_CHANNEL_FLAG_ZONE_SKIP));
+
+		channel = currentZone.channels[nextChannelIndex];
+		codeplugChannelGetDataForIndex(currentZone.channels[nextChannelIndex], &channelNextChannelData);
+	}
+
+	//check all nuisance delete entries and skip channel if there is a match
+	for (int i = 0; i < MAX_ZONE_SCAN_NUISANCE_CHANNELS; i++)
+	{
+		if (uiDataGlobal.Scan.nuisanceDelete[i] == -1)
+		{
+			break;
 		}
 		else
 		{
-			if (nextChannelIndex < 0)
+			if(uiDataGlobal.Scan.nuisanceDelete[i] == channel)
 			{
-				nextChannelIndex = currentZone.NOT_IN_MEMORY_numChannelsInZone - 1;
-			}
-		}
-		codeplugChannelGetDataForIndex(currentZone.channels[nextChannelIndex], &channelNextChannelData);
-		channel = currentZone.channels[nextChannelIndex];
-	}
-
-	if ((currentZone.NOT_IN_MEMORY_isAllChannelsZone && (channelNextChannelData.flag4 & 0x10)) ||
-			(!currentZone.NOT_IN_MEMORY_isAllChannelsZone && (channelNextChannelData.flag4 & 0x20)))
-	{
-		return;
-	}
-	else
-	{
-		for (int i = 0; i < MAX_ZONE_SCAN_NUISANCE_CHANNELS; i++)														//check all nuisance delete entries and skip channel if there is a match
-		{
-			if (nuisanceDelete[i] == -1)
-			{
-				break;
-			}
-			else
-			{
-				if(nuisanceDelete[i] == channel)
-				{
-					return;
-				}
+				return;
 			}
 		}
 	}
@@ -343,45 +388,58 @@ static void searchNextChannel(void)
 	nextChannelReady = true;
 }
 
-static void setNextChannel(void)
+static void scanApplyNextChannel(void)
 {
-	if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+	if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 	{
-		settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, nextChannelIndex);
+		// All Channels virtual zone
+		settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, (int16_t) nextChannelIndex);
 	}
 	else
 	{
-		settingsSet(nonVolatileSettings.currentChannelIndexInZone, nextChannelIndex);
+		settingsSet(nonVolatileSettings.currentChannelIndexInZone, (int16_t) nextChannelIndex);
 	}
 
 	lastHeardClearLastID();
 
-	loadChannelData(false, true);
-	menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+	memcpy(&channelScreenChannelData, &channelNextChannelData, CODEPLUG_CHANNEL_DATA_STRUCT_SIZE);
+
+	loadChannelData(true, false);
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 	uiChannelModeUpdateScreen(0);
 
+	if ((trxGetMode() == RADIO_MODE_DIGITAL) && (trxDMRModeRx != DMR_MODE_SFR) && (uiDataGlobal.Scan.stepTimeMilliseconds < SCAN_DMR_SIMPLEX_MIN_INTERVAL))
+	{
+		uiDataGlobal.Scan.timerReload = SCAN_DMR_SIMPLEX_MIN_INTERVAL;
+	}
+	else
+	{
+		uiDataGlobal.Scan.timerReload = uiDataGlobal.Scan.stepTimeMilliseconds;
+	}
+	uiDataGlobal.Scan.timer = uiDataGlobal.Scan.timerReload;
+	uiDataGlobal.Scan.state = SCAN_SCANNING;
 	nextChannelReady = false;
-	scanTimer = 500;
-	scanState = SCAN_SCANNING;
 }
 
 static void loadChannelData(bool useChannelDataInMemory, bool loadVoicePromptAnnouncement)
 {
-	bool rxGroupValid;
+	bool rxGroupValid = true;
 
-	if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+	if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 	{
-		settingsCurrentChannelNumber = nonVolatileSettings.currentChannelIndexInAllZone;
+		// All Channels virtual zone
+		uiDataGlobal.currentSelectedChannelNumber = nonVolatileSettings.currentChannelIndexInAllZone;
 	}
 	else
 	{
-		settingsCurrentChannelNumber = currentZone.channels[nonVolatileSettings.currentChannelIndexInZone];
+		uiDataGlobal.currentSelectedChannelNumber = currentZone.channels[nonVolatileSettings.currentChannelIndexInZone];
 	}
 
 	if (!useChannelDataInMemory)
 	{
-		if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+		if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 		{
+			// All Channels virtual zone
 			codeplugChannelGetDataForIndex(nonVolatileSettings.currentChannelIndexInAllZone, &channelScreenChannelData);
 		}
 		else
@@ -391,19 +449,28 @@ static void loadChannelData(bool useChannelDataInMemory, bool loadVoicePromptAnn
 	}
 
 	clearActiveDMRID();
-	trxSetFrequency(channelScreenChannelData.rxFreq, channelScreenChannelData.txFreq, DMR_MODE_AUTO);
+	trxSetFrequency(currentChannelData->rxFreq, currentChannelData->txFreq, DMR_MODE_AUTO);
+	trxSetModeAndBandwidth(currentChannelData->chMode, ((currentChannelData->flag4 & 0x02) == 0x02));
 
-	if (channelScreenChannelData.chMode == RADIO_MODE_ANALOG)
+	if (currentChannelData->chMode == RADIO_MODE_ANALOG)
 	{
-		trxSetModeAndBandwidth(channelScreenChannelData.chMode, ((channelScreenChannelData.flag4 & 0x02) == 0x02));
-		trxSetRxCSS(channelScreenChannelData.rxTone);
+		trxSetRxCSS(currentChannelData->rxTone);
 	}
 	else
 	{
-		trxSetModeAndBandwidth(channelScreenChannelData.chMode, false);// bandwidth false = 12.5Khz as DMR uses 12.5kHz
-		trxSetDMRColourCode(channelScreenChannelData.txColor);
-
-		rxGroupValid = codeplugRxGroupGetDataForIndex(channelScreenChannelData.rxGroupList, &currentRxGroupData);
+		trxSetDMRColourCode(currentChannelData->txColor);
+		if (currentChannelData->rxGroupList != lastLoadedRxGroup)
+		{
+			rxGroupValid = codeplugRxGroupGetDataForIndex(currentChannelData->rxGroupList, &currentRxGroupData);
+			if (rxGroupValid)
+			{
+				lastLoadedRxGroup = currentChannelData->rxGroupList;
+			}
+			else
+			{
+				lastLoadedRxGroup = -1;// RxGroup Contacts are not valid
+			}
+		}
 
 		// Current contact index is out of group list bounds, select first contact
 		if (rxGroupValid && (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] > (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1)))
@@ -419,7 +486,7 @@ static void loadChannelData(bool useChannelDataInMemory, bool loadVoicePromptAnn
 		}
 		else
 		{
-			codeplugContactGetDataForIndex(channelScreenChannelData.contact, &currentContactData);
+			codeplugContactGetDataForIndex(currentChannelData->contact, &currentContactData);
 		}
 
 		trxUpdateTsForCurrentChannelWithSpecifiedContact(&currentContactData);
@@ -437,19 +504,19 @@ static void loadChannelData(bool useChannelDataInMemory, bool loadVoicePromptAnn
 		{
 			trxTalkGroupOrPcId = nonVolatileSettings.overrideTG;
 		}
-
-		if (tsIsOverridden(CHANNEL_CHANNEL))
-		{
-			trxSetDMRTimeSlot((tsGetOverride(CHANNEL_CHANNEL) - 1));
-		}
 	}
 
 #if ! defined(PLATFORM_GD77S) // GD77S handle voice prompts on its own
-	if ((!inhibitInitialVoicePrompt || loadVoicePromptAnnouncement) && (scanActive == false))
+	int nextMenu = menuSystemGetPreviouslyPushedMenuNumber(); // used to determine if this screen has just been loaded after Tx ended (in loadChannelData()))
+	if ((!uiDataGlobal.VoicePrompts.inhibitInitial || loadVoicePromptAnnouncement) &&
+			((uiDataGlobal.Scan.active == false) ||
+					(uiDataGlobal.Scan.active && ((uiDataGlobal.Scan.state = SCAN_SHORT_PAUSED) || (uiDataGlobal.Scan.state = SCAN_PAUSED)))))
 	{
-		announceItem(PROMPT_SEQUENCE_CHANNEL_NAME_OR_VFO_FREQ, ((menuControlData.stack[menuControlData.stackPosition + 1] == UI_TX_SCREEN) || (menuControlData.stack[menuControlData.stackPosition + 1] == UI_PRIVATE_CALL))
-					? PROMPT_THRESHOLD_NEVER_PLAY_IMMEDIATELY : PROMPT_THRESHOLD_3);
+			announceItem(PROMPT_SEQUENCE_CHANNEL_NAME_AND_CONTACT_OR_VFO_FREQ_AND_MODE, ((nextMenu == UI_TX_SCREEN) || (nextMenu == UI_PRIVATE_CALL) || uiDataGlobal.Scan.active) ? PROMPT_THRESHOLD_NEVER_PLAY_IMMEDIATELY : PROMPT_THRESHOLD_3);
 	}
+#else
+	// Force GD77S to always use the Master power level
+	currentChannelData->libreDMR_Power = 0x00;
 #endif
 
 }
@@ -461,75 +528,63 @@ void uiChannelModeUpdateScreen(int txTimeSecs)
 	char nameBuf[nameBufferLen];
 	static const int bufferLen = 17;
 	char buffer[bufferLen];
-	int verticalPositionOffset = 0;
 
 	// Only render the header, then wait for the next run
 	// Otherwise the screen could remain blank if TG and PC are == 0
-	// since menuDisplayQSODataState won't be set to QSO_DISPLAY_IDLE
+	// since uiDataGlobal.displayQSOState won't be set to QSO_DISPLAY_IDLE
 	if ((trxGetMode() == RADIO_MODE_DIGITAL) && (HRC6000GetReceivedTgOrPcId() == 0) &&
-			((menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA) || (menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA_UPDATE)))
+			((uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA) || (uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA_UPDATE)))
 	{
-#if defined(PLATFORM_RD5R)
-		ucClearRows(0, 1, false);
-#else
-		ucClearRows(0, 2, false);
-#endif
-		menuUtilityRenderHeader();
-		ucRenderRows(0, 2);
+		uiUtilityRedrawHeaderOnly(false);
 		return;
 	}
 
 	// We're currently displaying details, and it shouldn't be overridden by QSO data
-	if (displayChannelSettings && ((menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA)
-			|| (menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA_UPDATE)))
+	if (uiDataGlobal.displayChannelSettings && ((uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA)
+			|| (uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA_UPDATE)))
 	{
 		// We will not restore the previous QSO Data as a new caller just arose.
-		prevDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-		menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+		uiDataGlobal.displayQSOStatePrev = QSO_DISPLAY_DEFAULT_SCREEN;
+		uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 	}
 
 	ucClearBuf();
-	menuUtilityRenderHeader();
+	uiUtilityRenderHeader(false);
 
-	switch(menuDisplayQSODataState)
+	switch(uiDataGlobal.displayQSOState)
 	{
 		case QSO_DISPLAY_DEFAULT_SCREEN:
-			prevDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-			isDisplayingQSOData = false;
-			menuUtilityReceivedPcId = 0x00;
+			uiDataGlobal.displayQSOStatePrev = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.isDisplayingQSOData = false;
+			uiDataGlobal.receivedPcId = 0x00;
 			if (trxTransmissionEnabled)
 			{
 				// Squelch is displayed, PTT was pressed
 				// Clear its region
-				if (displaySquelch)
+				if (uiDataGlobal.displaySquelch)
 				{
-					displaySquelch = false;
-#if defined(PLATFORM_RD5R)
-					ucFillRect(0, SQUELCH_BAR_Y_POS, DISPLAY_SIZE_X, 9, true);
-#else
-					ucClearRows(2, 4, false);
-#endif
+					uiDataGlobal.displaySquelch = false;
+					uiUtilityDisplayInformation(NULL, DISPLAY_INFO_SQUELCH_CLEAR_AREA, -1);
 				}
 
 				snprintf(buffer, bufferLen, " %d ", txTimeSecs);
-				buffer[bufferLen - 1] = 0;
-				ucPrintCentered(TX_TIMER_Y_OFFSET, buffer, FONT_SIZE_4);
-				verticalPositionOffset = 16;
+				uiUtilityDisplayInformation(buffer, DISPLAY_INFO_TX_TIMER, -1);
 			}
 			else
 			{
 				// Display some channel settings
-				if (displayChannelSettings)
+				if (uiDataGlobal.displayChannelSettings)
 				{
-					printToneAndSquelch();
+					uiUtilityDisplayInformation(NULL, DISPLAY_INFO_TONE_AND_SQUELCH, -1);
 
-					printFrequency(false, false, 32, (reverseRepeater ? currentChannelData->txFreq : currentChannelData->rxFreq), false, false);
-					printFrequency(true, false, (DISPLAY_SIZE_Y - FONT_SIZE_3_HEIGHT), (reverseRepeater ? currentChannelData->rxFreq : currentChannelData->txFreq), false, false);
+					uiUtilityDisplayFrequency(DISPLAY_Y_POS_RX_FREQ, false, false, (uiDataGlobal.reverseRepeater ? currentChannelData->txFreq : currentChannelData->rxFreq), false, false, 0);
+					uiUtilityDisplayFrequency(DISPLAY_Y_POS_TX_FREQ, true, false, (uiDataGlobal.reverseRepeater ? currentChannelData->rxFreq : currentChannelData->txFreq), false, false, 0);
 				}
 				else
 				{
-					if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+					if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 					{
+						// All Channels virtual zone
 						channelNumber = nonVolatileSettings.currentChannelIndexInAllZone;
 						if (directChannelNumber > 0)
 						{
@@ -539,9 +594,6 @@ void uiChannelModeUpdateScreen(int txTimeSecs)
 						{
 							snprintf(nameBuf, nameBufferLen, "%s Ch:%d",currentLanguage->all_channels, channelNumber);
 						}
-						nameBuf[nameBufferLen - 1] = 0;
-
-						ucPrintCentered(CH_NAME_Y_POS , nameBuf, FONT_SIZE_1);
 					}
 					else
 					{
@@ -549,84 +601,88 @@ void uiChannelModeUpdateScreen(int txTimeSecs)
 						if (directChannelNumber > 0)
 						{
 							snprintf(nameBuf, nameBufferLen, "%s %d", currentLanguage->gotoChannel, directChannelNumber);
-							nameBuf[nameBufferLen - 1] = 0;
 						}
 						else
 						{
-							snprintf(nameBuf, nameBufferLen, "%s Ch:%d", currentZoneName,channelNumber);
-							nameBuf[nameBufferLen - 1] = 0;
+							snprintf(nameBuf, nameBufferLen, "%s Ch:%d", currentZoneName, channelNumber);
 						}
-
-						ucPrintCentered(CH_NAME_Y_POS, (char *)nameBuf, FONT_SIZE_1);
 					}
+					uiUtilityDisplayInformation(nameBuf, DISPLAY_INFO_ZONE, -1);
+
+				/*
+				 * Roger Clark. Commented out
+				 * functionality to display "Scanning" instead of the channel name  (and TG on DMR) whilst scanning
+				 * if (uiDataGlobal.Scan.active && (uiDataGlobal.Scan.state == SCAN_SCANNING))
+					{
+						uiUtilityDisplayInformation(currentLanguage->scanning, DISPLAY_INFO_CONTACT, -1);
+						ucRender();
+						break;
+					}*/
 				}
 			}
 
-			if (!displayChannelSettings)
+			if (!uiDataGlobal.displayChannelSettings)
 			{
-				codeplugUtilConvertBufToString(channelScreenChannelData.name, nameBuf, 16);
-				ucPrintCentered((DISPLAY_SIZE_Y / 2) + verticalPositionOffset, nameBuf, FONT_SIZE_3);
+				codeplugUtilConvertBufToString(currentChannelData->name, nameBuf, 16);
+				uiUtilityDisplayInformation(nameBuf, DISPLAY_INFO_CHANNEL, (trxTransmissionEnabled ? DISPLAY_Y_POS_CHANNEL_SECOND_LINE : -1));
 			}
 
 			if (trxGetMode() == RADIO_MODE_DIGITAL)
 			{
-				if (nonVolatileSettings.overrideTG != 0)
+				if (uiDataGlobal.displayChannelSettings)
 				{
-					buildTgOrPCDisplayName(nameBuf, bufferLen);
-					nameBuf[bufferLen - 1] = 0;
-#if defined(PLATFORM_RD5R)
-					ucDrawRect(0, CONTACT_Y_POS + verticalPositionOffset, DISPLAY_SIZE_X, 11, true);
-#else
-					ucDrawRect(0, CONTACT_Y_POS + verticalPositionOffset, DISPLAY_SIZE_X, 16, true);
-#endif
+					uint32_t PCorTG = ((nonVolatileSettings.overrideTG != 0) ? nonVolatileSettings.overrideTG : currentContactData.tgNumber);
+
+					snprintf(nameBuf, nameBufferLen, "%s %d",
+							(((PCorTG >> 24) == PC_CALL_FLAG) ? currentLanguage->pc : currentLanguage->tg),
+							(PCorTG & 0xFFFFFF));
 				}
 				else
 				{
-					codeplugUtilConvertBufToString(currentContactData.name, nameBuf, 16);
+					if (nonVolatileSettings.overrideTG != 0)
+					{
+						uiUtilityBuildTgOrPCDisplayName(nameBuf, bufferLen);
+						uiUtilityDisplayInformation(NULL, DISPLAY_INFO_CONTACT_OVERRIDE_FRAME, (trxTransmissionEnabled ? DISPLAY_Y_POS_CONTACT_TX_FRAME : -1));
+					}
+					else
+					{
+						codeplugUtilConvertBufToString(currentContactData.name, nameBuf, 16);
+					}
 				}
 
-#if defined(PLATFORM_RD5R)
-				ucPrintCentered(CONTACT_Y_POS + verticalPositionOffset + 2, nameBuf, FONT_SIZE_3);
-#else
-				ucPrintCentered(CONTACT_Y_POS + verticalPositionOffset, nameBuf, FONT_SIZE_3);
-#endif
+				uiUtilityDisplayInformation(nameBuf, DISPLAY_INFO_CONTACT, (trxTransmissionEnabled ? DISPLAY_Y_POS_CONTACT_TX : -1));
 			}
 			// Squelch will be cleared later, 1s after last change
-			else if(displaySquelch && !trxTransmissionEnabled && !displayChannelSettings)
+			else if(uiDataGlobal.displaySquelch && !trxTransmissionEnabled && !uiDataGlobal.displayChannelSettings)
 			{
-				static const int xbar = 74; // 128 - (51 /* max squelch px */ + 3);
-
 				strncpy(buffer, currentLanguage->squelch, 9);
 				buffer[8] = 0; // Avoid overlap with bargraph
-				// Center squelch word between col0 and bargraph, if possible.
-				ucPrintAt(0 + ((strlen(buffer) * 8) < xbar - 2 ? (((xbar - 2) - (strlen(buffer) * 8)) >> 1) : 0), SQUELCH_BAR_Y_POS, buffer, FONT_SIZE_3);
-
-				int bargraph = 1 + ((currentChannelData->sql - 1) * 5) /2;
-				ucDrawRect(xbar - 2, SQUELCH_BAR_Y_POS, 55, SQUELCH_BAR_H + 4, true);
-				ucFillRect(xbar, SQUELCH_BAR_Y_POS + 2, bargraph, SQUELCH_BAR_H, false);
+				uiUtilityDisplayInformation(buffer, DISPLAY_INFO_SQUELCH, -1);
 			}
 
 			// SK1 is pressed, we don't want to clear the first info row after 1s
-			if (displayChannelSettings && displaySquelch)
+			if (uiDataGlobal.displayChannelSettings && uiDataGlobal.displaySquelch)
 			{
-				displaySquelch = false;
+				uiDataGlobal.displaySquelch = false;
 			}
 
 			ucRender();
 			break;
 
 		case QSO_DISPLAY_CALLER_DATA:
-			displayLightTrigger();
 		case QSO_DISPLAY_CALLER_DATA_UPDATE:
-			prevDisplayQSODataState = QSO_DISPLAY_CALLER_DATA;
-			isDisplayingQSOData = true;
-			displayChannelSettings = false;
-			menuUtilityRenderQSOData();
+			uiDataGlobal.displayQSOStatePrev = QSO_DISPLAY_CALLER_DATA;
+			uiDataGlobal.isDisplayingQSOData = true;
+			uiDataGlobal.displayChannelSettings = false;
+			uiUtilityRenderQSOData();
 			ucRender();
+			break;
+
+		case QSO_DISPLAY_IDLE:
 			break;
 	}
 
-	menuDisplayQSODataState = QSO_DISPLAY_IDLE;
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_IDLE;
 }
 
 static void handleEvent(uiEvent_t *ev)
@@ -636,42 +692,33 @@ static void handleEvent(uiEvent_t *ev)
 	return;
 #else
 
-	displayLightTrigger();
-
-	if (scanActive && (ev->events & KEY_EVENT))
+	if (uiDataGlobal.Scan.active && (ev->events & KEY_EVENT))
 	{
 		// Key pressed during scanning
 
 		if (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0)
 		{
 			// if we are scanning and down key is pressed then enter current channel into nuisance delete array.
-			if((scanState == SCAN_PAUSED) && (ev->keys.key == KEY_RIGHT))
+			if((uiDataGlobal.Scan.state == SCAN_PAUSED) && (ev->keys.key == KEY_RIGHT))
 			{
-				// There is no more channel available in the Zone, just stop scanning
-				if (nuisanceDeleteIndex == (currentZone.NOT_IN_MEMORY_numChannelsInZone - 1))
+				// There is two channels available in the Zone, just stop scanning
+				if (uiDataGlobal.Scan.nuisanceDeleteIndex == (uiDataGlobal.Scan.availableChannelsCount - 2))
 				{
-					uiChannelModeStopScanning();
-					keyboardReset();
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-					uiChannelModeUpdateScreen(0);
-					return;
+					uiDataGlobal.Scan.lastIteration = true;
 				}
 
-				nuisanceDelete[nuisanceDeleteIndex++] = settingsCurrentChannelNumber;
-				if(nuisanceDeleteIndex > (MAX_ZONE_SCAN_NUISANCE_CHANNELS - 1))
-				{
-					nuisanceDeleteIndex = 0; //rolling list of last MAX_NUISANCE_CHANNELS deletes.
-				}
-				scanTimer = SCAN_SKIP_CHANNEL_INTERVAL;	//force scan to continue;
-				scanState = SCAN_SCANNING;
+				uiDataGlobal.Scan.nuisanceDelete[uiDataGlobal.Scan.nuisanceDeleteIndex] = uiDataGlobal.currentSelectedChannelNumber;
+				uiDataGlobal.Scan.nuisanceDeleteIndex = (uiDataGlobal.Scan.nuisanceDeleteIndex + 1) % MAX_ZONE_SCAN_NUISANCE_CHANNELS;
+				uiDataGlobal.Scan.timer = SCAN_SKIP_CHANNEL_INTERVAL;	//force scan to continue;
+				uiDataGlobal.Scan.state = SCAN_SCANNING;
 				keyboardReset();
 				return;
 			}
 
 			// Left key reverses the scan direction
-			if ((scanState == SCAN_SCANNING) && (ev->keys.key == KEY_LEFT))
+			if (ev->keys.key == KEY_LEFT)
 			{
-				scanDirection *= -1;
+				uiDataGlobal.Scan.direction *= -1;
 				keyboardReset();
 				return;
 			}
@@ -682,20 +729,35 @@ static void handleEvent(uiEvent_t *ev)
 		{
 			uiChannelModeStopScanning();
 			keyboardReset();
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			uiChannelModeUpdateScreen(0);
+			loadChannelData(false, true);
 			return;
 		}
 	}
 
 	if (ev->events & FUNCTION_EVENT)
 	{
-		if (ev->function == START_SCANNING)
+		if (ev->function == FUNC_START_SCANNING)
 		{
 			directChannelNumber = 0;
-			startScan(false);
+			if (uiDataGlobal.Scan.active == false)
+			{
+				scanStart(false);
+			}
 			return;
 		}
+		else if (ev->function == FUNC_REDRAW)
+		{
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiChannelModeUpdateScreen(0);
+			return;
+		}
+	}
+
+	if ((uiDataGlobal.reverseRepeater == false) && handleMonitorMode(ev))
+	{
+		return;
 	}
 
 	if (ev->events & BUTTON_EVENT)
@@ -708,7 +770,7 @@ static void handleEvent(uiEvent_t *ev)
 		uint32_t tg = (LinkHead->talkGroupOrPcId & 0xFFFFFF);
 
 		// If Blue button is pressed during reception it sets the Tx TG to the incoming TG
-		if (isDisplayingQSOData && BUTTONCHECK_DOWN(ev, BUTTON_SK2) && (trxGetMode() == RADIO_MODE_DIGITAL) &&
+		if (uiDataGlobal.isDisplayingQSOData && BUTTONCHECK_SHORTUP(ev, BUTTON_SK2) && (trxGetMode() == RADIO_MODE_DIGITAL) &&
 				((trxTalkGroupOrPcId != tg) ||
 				((dmrMonitorCapturedTS != -1) && (dmrMonitorCapturedTS != trxGetDMRTimeSlot())) ||
 				(trxGetDMRColourCode() != currentChannelData->txColor)))
@@ -719,7 +781,7 @@ static void handleEvent(uiEvent_t *ev)
 			if ((dmrMonitorCapturedTS != -1) && (dmrMonitorCapturedTS != trxGetDMRTimeSlot()))
 			{
 				trxSetDMRTimeSlot(dmrMonitorCapturedTS);
-				tsSetOverride(CHANNEL_CHANNEL, (dmrMonitorCapturedTS + 1));
+				tsSetManualOverride(CHANNEL_CHANNEL, (dmrMonitorCapturedTS + 1));
 			}
 
 			if (trxTalkGroupOrPcId != tg)
@@ -729,65 +791,70 @@ static void handleEvent(uiEvent_t *ev)
 			}
 
 			currentChannelData->txColor = trxGetDMRColourCode();// Set the CC to the current CC, which may have been determined by the CC finding algorithm in C6000.c
+			announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC,PROMPT_THRESHOLD_NEVER_PLAY_IMMEDIATELY);
 
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			uiChannelModeUpdateScreen(0);
+			soundSetMelody(MELODY_ACK_BEEP);
 			return;
 		}
 
-		if ((reverseRepeater == false) && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) && BUTTONCHECK_DOWN(ev, BUTTON_SK2)))
+		if ((uiDataGlobal.reverseRepeater == false) && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) && BUTTONCHECK_DOWN(ev, BUTTON_SK2)))
 		{
-			trxSetFrequency(channelScreenChannelData.txFreq, channelScreenChannelData.rxFreq, DMR_MODE_ACTIVE);// Swap Tx and Rx freqs but force DMR Active
-			reverseRepeater = true;
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			trxSetFrequency(currentChannelData->txFreq, currentChannelData->rxFreq, DMR_MODE_DMO);// Swap Tx and Rx freqs but force DMR Active
+			uiDataGlobal.reverseRepeater = true;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			uiChannelModeUpdateScreen(0);
 			return;
 		}
-		else if ((reverseRepeater == true) && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0))
+		else if ((uiDataGlobal.reverseRepeater == true) && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0))
 		{
-			trxSetFrequency(channelScreenChannelData.rxFreq, channelScreenChannelData.txFreq, DMR_MODE_AUTO);
-			reverseRepeater = false;
+			trxSetFrequency(currentChannelData->rxFreq, currentChannelData->txFreq, DMR_MODE_AUTO);
+			uiDataGlobal.reverseRepeater = false;
 
 			// We are still displaying channel details (SK1 has been released), force to update the screen
-			if (displayChannelSettings)
+			if (uiDataGlobal.displayChannelSettings)
 			{
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 
 			return;
 		}
 		// Display channel settings (RX/TX/etc) while SK1 is pressed
-		else if ((displayChannelSettings == false) && BUTTONCHECK_DOWN(ev, BUTTON_SK1))
+		else if ((uiDataGlobal.displayChannelSettings == false) && BUTTONCHECK_DOWN(ev, BUTTON_SK1))
 		{
-			int prevQSODisp = prevDisplayQSODataState;
-			displayChannelSettings = true;
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-			uiChannelModeUpdateScreen(0);
-			prevDisplayQSODataState = prevQSODisp;
+			if (uiDataGlobal.Scan.active == false)
+			{
+				int prevQSODisp = uiDataGlobal.displayQSOStatePrev;
+				uiDataGlobal.displayChannelSettings = true;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiChannelModeUpdateScreen(0);
+				uiDataGlobal.displayQSOStatePrev = prevQSODisp;
+			}
 			return;
 
 		}
-		else if ((displayChannelSettings == true) && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) == 0))
+		else if ((uiDataGlobal.displayChannelSettings == true) && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) == 0))
 		{
-			displayChannelSettings = false;
-			menuDisplayQSODataState = prevDisplayQSODataState;
+			uiDataGlobal.displayChannelSettings = false;
+			uiDataGlobal.displayQSOState = uiDataGlobal.displayQSOStatePrev;
 
 			// Maybe QSO State has been overridden, double check if we could now
 			// display QSO Data
-			if (menuDisplayQSODataState == QSO_DISPLAY_DEFAULT_SCREEN)
+			if (uiDataGlobal.displayQSOState == QSO_DISPLAY_DEFAULT_SCREEN)
 			{
 				if (isQSODataAvailableForCurrentTalker())
 				{
-					menuDisplayQSODataState = QSO_DISPLAY_CALLER_DATA;
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_CALLER_DATA;
 				}
 			}
 
 			// Leaving Channel Details disable reverse repeater feature
-			if (reverseRepeater)
+			if (uiDataGlobal.reverseRepeater)
 			{
-				trxSetFrequency(channelScreenChannelData.rxFreq, channelScreenChannelData.txFreq, DMR_MODE_AUTO);
-				reverseRepeater = false;
+				trxSetFrequency(currentChannelData->rxFreq, currentChannelData->txFreq, DMR_MODE_AUTO);
+				uiDataGlobal.reverseRepeater = false;
 			}
 
 			uiChannelModeUpdateScreen(0);
@@ -795,7 +862,7 @@ static void handleEvent(uiEvent_t *ev)
 		}
 
 #if !defined(PLATFORM_RD5R)
-		if (BUTTONCHECK_DOWN(ev, BUTTON_ORANGE) && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) == 0))
+		if (BUTTONCHECK_SHORTUP(ev, BUTTON_ORANGE) && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) == 0))
 		{
 			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 			{
@@ -824,11 +891,12 @@ static void handleEvent(uiEvent_t *ev)
 		{
 			if (directChannelNumber > 0)
 			{
-				if(currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+				if(CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 				{
-					if (codeplugChannelIndexIsValid(directChannelNumber))
+					// All Channels virtual zone
+					if (codeplugAllChannelsIndexIsInUse(directChannelNumber))
 					{
-						settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, directChannelNumber);
+						settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, (int16_t) directChannelNumber);
 						loadChannelData(false, true);
 
 					}
@@ -839,9 +907,9 @@ static void handleEvent(uiEvent_t *ev)
 				}
 				else
 				{
-					if ((directChannelNumber - 1) < currentZone.NOT_IN_MEMORY_numChannelsInZone)
+					if ((directChannelNumber - 1) < currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone)
 					{
-						settingsSet(nonVolatileSettings.currentChannelIndexInZone, (directChannelNumber - 1));
+						settingsSet(nonVolatileSettings.currentChannelIndexInZone, (int16_t) (directChannelNumber - 1));
 						loadChannelData(false, true);
 					}
 					else
@@ -851,7 +919,7 @@ static void handleEvent(uiEvent_t *ev)
 
 				}
 				directChannelNumber = 0;
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 			else if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
@@ -881,13 +949,13 @@ static void handleEvent(uiEvent_t *ev)
 		}
 		else if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
 		{
-			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2) && (menuUtilityTgBeforePcMode != 0))
+			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2) && (uiDataGlobal.tgBeforePcMode != 0))
 			{
-				settingsSet(nonVolatileSettings.overrideTG, menuUtilityTgBeforePcMode);
-				menuClearPrivateCall();
+				settingsSet(nonVolatileSettings.overrideTG, uiDataGlobal.tgBeforePcMode);
+				menuPrivateCallClear();
 
-				uiChannelUpdateTrxID();
-				menuDisplayQSODataState= QSO_DISPLAY_DEFAULT_SCREEN;// Force redraw
+				updateTrxID();
+				uiDataGlobal.displayQSOState= QSO_DISPLAY_DEFAULT_SCREEN;// Force redraw
 				uiChannelModeUpdateScreen(0);
 				return;// The event has been handled
 			}
@@ -896,7 +964,7 @@ static void handleEvent(uiEvent_t *ev)
 				announceItem(PROMPT_SEQUENCE_CHANNEL_NAME_OR_VFO_FREQ, PROMPT_THRESHOLD_NEVER_PLAY_IMMEDIATELY);
 
 				directChannelNumber = 0;
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 			else
@@ -911,7 +979,6 @@ static void handleEvent(uiEvent_t *ev)
 		else if (KEYCHECK_SHORTUP(ev->keys, KEY_VFO_MR))
 		{
 			directChannelNumber = 0;
-			inhibitInitialVoicePrompt = true;
 			menuSystemSetCurrentMenu(UI_VFO_MODE);
 			return;
 		}
@@ -942,11 +1009,9 @@ static void handleEvent(uiEvent_t *ev)
 			// Long press allows the 5W+ power setting to be selected immediately
 			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 			{
-				if (nonVolatileSettings.txPowerLevel == (MAX_POWER_SETTING_NUM - 1))
+				if (increasePowerLevel(true))
 				{
-					increasePowerLevel();
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-					uiChannelModeUpdateScreen(0);
+					uiUtilityRedrawHeaderOnly(false);
 				}
 			}
 		}
@@ -954,32 +1019,37 @@ static void handleEvent(uiEvent_t *ev)
 		{
 			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 			{
-				if (nonVolatileSettings.txPowerLevel < (MAX_POWER_SETTING_NUM - 1))
+				if (increasePowerLevel(false))
 				{
-					increasePowerLevel();
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-					uiChannelModeUpdateScreen(0);
+					uiUtilityRedrawHeaderOnly(false);
 				}
 			}
 			else
 			{
 				if (trxGetMode() == RADIO_MODE_DIGITAL)
 				{
-					if (nonVolatileSettings.overrideTG == 0)
+					if (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup > 1)
 					{
-						settingsIncrement(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 1);
-						if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] > (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1))
+						if (nonVolatileSettings.overrideTG == 0)
 						{
-							settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 0);
-							menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+							settingsIncrement(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 1);
+							if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] > (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1))
+							{
+								settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 0);
+								menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+							}
 						}
 					}
 					settingsSet(nonVolatileSettings.overrideTG, 0);// setting the override TG to 0 indicates the TG is not overridden
-					menuClearPrivateCall();
-					uiChannelUpdateTrxID();
+					menuPrivateCallClear();
+					updateTrxID();
 					// We're in digital mode, RXing, and current talker is already at the top of last heard list,
 					// hence immediately display complete contact/TG info on screen
-					menuDisplayQSODataState = (isQSODataAvailableForCurrentTalker() ? QSO_DISPLAY_CALLER_DATA : QSO_DISPLAY_DEFAULT_SCREEN);
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;//(isQSODataAvailableForCurrentTalker() ? QSO_DISPLAY_CALLER_DATA : QSO_DISPLAY_DEFAULT_SCREEN);
+					if (isQSODataAvailableForCurrentTalker())
+					{
+						addTimerCallback(uiUtilityRenderQSODataAndUpdateScreen, 2000, true);
+					}
 					uiChannelModeUpdateScreen(0);
 					announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC,PROMPT_THRESHOLD_3);
 				}
@@ -989,18 +1059,16 @@ static void handleEvent(uiEvent_t *ev)
 					{
 						currentChannelData->sql = nonVolatileSettings.squelchDefaults[trxCurrentBand[TRX_RX_FREQ_BAND]];			//start the adjustment from that point.
 					}
-					else
+
+					if (currentChannelData->sql < CODEPLUG_MAX_VARIABLE_SQUELCH)
 					{
-						if (currentChannelData->sql < CODEPLUG_MAX_VARIABLE_SQUELCH)
-						{
-							currentChannelData->sql++;
-						}
+						currentChannelData->sql++;
 					}
 
 					announceItem(PROMPT_SQUENCE_SQUELCH,PROMPT_THRESHOLD_3);
 
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-					displaySquelch = true;
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+					uiDataGlobal.displaySquelch = true;
 					uiChannelModeUpdateScreen(0);
 				}
 			}
@@ -1010,14 +1078,12 @@ static void handleEvent(uiEvent_t *ev)
 		{
 			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 			{
-				if (nonVolatileSettings.txPowerLevel > 0)
+				if (decreasePowerLevel())
 				{
-					decreasePowerLevel();
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-					uiChannelModeUpdateScreen(0);
+					uiUtilityRedrawHeaderOnly(false);
 				}
 
-				if (nonVolatileSettings.txPowerLevel == 0)
+				if (trxGetPowerLevel() == 0)
 				{
 					menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
 				}
@@ -1026,27 +1092,34 @@ static void handleEvent(uiEvent_t *ev)
 			{
 				if (trxGetMode() == RADIO_MODE_DIGITAL)
 				{
-					// To Do change TG in on same channel freq
-					if (nonVolatileSettings.overrideTG == 0)
+					if (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup > 1)
 					{
-						settingsDecrement(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 1);
-						if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] < 0)
+						// To Do change TG in on same channel freq
+						if (nonVolatileSettings.overrideTG == 0)
 						{
-							settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE],
-									(currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1));
-						}
+							settingsDecrement(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 1);
+							if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] < 0)
+							{
+								settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE],
+										(int16_t) (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1));
+							}
 
-						if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] == 0)
-						{
-							menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+							if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] == 0)
+							{
+								menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+							}
 						}
 					}
 					settingsSet(nonVolatileSettings.overrideTG, 0);// setting the override TG to 0 indicates the TG is not overridden
-					menuClearPrivateCall();
-					uiChannelUpdateTrxID();
+					menuPrivateCallClear();
+					updateTrxID();
 					// We're in digital mode, RXing, and current talker is already at the top of last heard list,
 					// hence immediately display complete contact/TG info on screen
-					menuDisplayQSODataState = (isQSODataAvailableForCurrentTalker() ? QSO_DISPLAY_CALLER_DATA : QSO_DISPLAY_DEFAULT_SCREEN);
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;//(isQSODataAvailableForCurrentTalker() ? QSO_DISPLAY_CALLER_DATA : QSO_DISPLAY_DEFAULT_SCREEN);
+					if (isQSODataAvailableForCurrentTalker())
+					{
+						addTimerCallback(uiUtilityRenderQSODataAndUpdateScreen, 2000, true);
+					}
 					uiChannelModeUpdateScreen(0);
 					announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC,PROMPT_THRESHOLD_3);
 				}
@@ -1056,18 +1129,16 @@ static void handleEvent(uiEvent_t *ev)
 					{
 						currentChannelData->sql = nonVolatileSettings.squelchDefaults[trxCurrentBand[TRX_RX_FREQ_BAND]];			//start the adjustment from that point.
 					}
-					else
+
+					if (currentChannelData->sql > CODEPLUG_MIN_VARIABLE_SQUELCH)
 					{
-						if (currentChannelData->sql > CODEPLUG_MIN_VARIABLE_SQUELCH)
-						{
-							currentChannelData->sql--;
-						}
+						currentChannelData->sql--;
 					}
 
 					announceItem(PROMPT_SQUENCE_SQUELCH,PROMPT_THRESHOLD_3);
 
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-					displaySquelch = true;
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+					uiDataGlobal.displaySquelch = true;
 					uiChannelModeUpdateScreen(0);
 				}
 
@@ -1079,19 +1150,21 @@ static void handleEvent(uiEvent_t *ev)
 			{
 				if (trxGetMode() == RADIO_MODE_ANALOG)
 				{
-					channelScreenChannelData.chMode = RADIO_MODE_DIGITAL;
+					currentChannelData->chMode = RADIO_MODE_DIGITAL;
+					uiDataGlobal.VoicePrompts.inhibitInitial = true;// Stop VP playing in loadChannelData
 					loadChannelData(true, false);
+					uiDataGlobal.VoicePrompts.inhibitInitial = false;
 					menuChannelExitStatus |= MENU_STATUS_FORCE_FIRST;
 				}
 				else
 				{
-					channelScreenChannelData.chMode = RADIO_MODE_ANALOG;
-					trxSetModeAndBandwidth(channelScreenChannelData.chMode, ((channelScreenChannelData.flag4 & 0x02) == 0x02));
+					currentChannelData->chMode = RADIO_MODE_ANALOG;
+					trxSetModeAndBandwidth(currentChannelData->chMode, ((currentChannelData->flag4 & 0x02) == 0x02));
 					trxSetRxCSS(currentChannelData->rxTone);
-					announceItem(PROMPT_SEQUENCE_MODE,PROMPT_THRESHOLD_3);
 				}
 
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				announceItem(PROMPT_SEQUENCE_MODE, PROMPT_THRESHOLD_3);
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 			else
@@ -1100,13 +1173,18 @@ static void handleEvent(uiEvent_t *ev)
 				{
 					// Toggle timeslot
 					trxSetDMRTimeSlot(1 - trxGetDMRTimeSlot());
-					tsSetOverride(CHANNEL_CHANNEL, (trxGetDMRTimeSlot() + 1));
+					tsSetManualOverride(CHANNEL_CHANNEL, (trxGetDMRTimeSlot() + 1));
+
+					if ((nonVolatileSettings.overrideTG == 0) && (currentContactData.reserve1 & 0x01) == 0x00)
+					{
+						tsSetContactHasBeenOverriden(CHANNEL_CHANNEL, true);
+					}
 
 					//	init_digital();
 					disableAudioAmp(AUDIO_AMP_MODE_RF);
 					clearActiveDMRID();
 					lastHeardClearLastID();
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 					uiChannelModeUpdateScreen(0);
 
 					if (trxGetDMRTimeSlot() == 0)
@@ -1125,33 +1203,35 @@ static void handleEvent(uiEvent_t *ev)
 		{
 			if (trxGetMode() == RADIO_MODE_DIGITAL)
 			{
-				tsSetOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
+				tsSetManualOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
+				tsSetContactHasBeenOverriden(CHANNEL_CHANNEL, false);
+
 				if ((currentRxGroupData.name[0] != 0) && (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] < currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup))
 				{
 					codeplugContactGetDataForIndex(currentRxGroupData.contacts[nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE]], &currentContactData);
 				}
 				else
 				{
-					codeplugContactGetDataForIndex(channelScreenChannelData.contact, &currentContactData);
+					codeplugContactGetDataForIndex(currentChannelData->contact, &currentContactData);
 				}
 
 				trxUpdateTsForCurrentChannelWithSpecifiedContact(&currentContactData);
 
 				clearActiveDMRID();
 				lastHeardClearLastID();
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 		}
 		else if (KEYCHECK_SHORTUP(ev->keys, KEY_DOWN) || KEYCHECK_LONGDOWN_REPEAT(ev->keys, KEY_DOWN))
 		{
-			displaySquelch = false;
+			uiDataGlobal.displaySquelch = false;
 
 			if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 			{
 				selectPrevNextZone(false);
 				menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, false);
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen redraw
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen redraw
 
 				if (nonVolatileSettings.currentZone == 0)
 				{
@@ -1162,40 +1242,47 @@ static void handleEvent(uiEvent_t *ev)
 			}
 			else
 			{
-				lastHeardClearLastID();
-				if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
-				{
-					do
-					{
-						settingsDecrement(nonVolatileSettings.currentChannelIndexInAllZone, 1);
-						if (nonVolatileSettings.currentChannelIndexInAllZone < CODEPLUG_CONTACTS_MIN)
-						{
-							settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, CODEPLUG_CONTACTS_MAX);
-						}
-					} while(!codeplugChannelIndexIsValid(nonVolatileSettings.currentChannelIndexInAllZone));
+				int16_t prevChan;
 
-					if (nonVolatileSettings.currentChannelIndexInAllZone == 1)
+				lastHeardClearLastID();
+				if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
+				{
+					if (currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone > 1)
 					{
-						menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+						prevChan = nonVolatileSettings.currentChannelIndexInAllZone;
+
+						// All Channels virtual zone
+						do
+						{
+							prevChan = ((((prevChan - 1) + currentZone.NOT_IN_CODEPLUGDATA_highestIndex - 1) % currentZone.NOT_IN_CODEPLUGDATA_highestIndex) + 1);
+
+						} while (!codeplugAllChannelsIndexIsInUse(prevChan));
+
+						settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, prevChan);
+
+						if (nonVolatileSettings.currentChannelIndexInAllZone == 1)
+						{
+							menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+						}
 					}
 				}
 				else
 				{
-					settingsDecrement(nonVolatileSettings.currentChannelIndexInZone, 1);
-					if (nonVolatileSettings.currentChannelIndexInZone < 0)
+					if (currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone > 1)
 					{
-						settingsSet(nonVolatileSettings.currentChannelIndexInZone, (currentZone.NOT_IN_MEMORY_numChannelsInZone - 1));
-					}
+						prevChan = ((nonVolatileSettings.currentChannelIndexInZone + currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone - 1) % currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone);
 
-					if (nonVolatileSettings.currentChannelIndexInZone == 0)
-					{
-						menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
-					}
+						settingsSet(nonVolatileSettings.currentChannelIndexInZone, prevChan);
 
+						if (nonVolatileSettings.currentChannelIndexInZone == 0)
+						{
+							menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+						}
+					}
 				}
 			}
 			loadChannelData(false, true);
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			uiChannelModeUpdateScreen(0);
 		}
 		else if (KEYCHECK_SHORTUP(ev->keys, KEY_UP) || KEYCHECK_LONGDOWN_REPEAT(ev->keys, KEY_UP))
@@ -1205,17 +1292,21 @@ static void handleEvent(uiEvent_t *ev)
 		}
 		else if (KEYCHECK_LONGDOWN(ev->keys, KEY_UP) && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0))
 		{
-			startScan(true);
+			if (uiDataGlobal.Scan.active == false)
+			{
+				scanStart(true);
+			}
 		}
 		else
 		{
 			int keyval = menuGetKeypadKeyValue(ev, true);
 
-			if (keyval < 10)
+			if ((keyval < 10) && (!BUTTONCHECK_DOWN(ev, BUTTON_SK2)))
 			{
 				directChannelNumber = (directChannelNumber * 10) + keyval;
-				if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+				if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 				{
+					// All Channels virtual zone
 					if(directChannelNumber > CODEPLUG_CONTACTS_MAX)
 					{
 						directChannelNumber = 0;
@@ -1224,7 +1315,7 @@ static void handleEvent(uiEvent_t *ev)
 				}
 				else
 				{
-					if(directChannelNumber > currentZone.NOT_IN_MEMORY_numChannelsInZone)
+					if(directChannelNumber > currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone)
 					{
 						directChannelNumber = 0;
 						soundSetMelody(MELODY_ERROR_BEEP);
@@ -1246,7 +1337,7 @@ static void handleEvent(uiEvent_t *ev)
 					announceItem(PROMPT_SEQUENCE_CHANNEL_NAME_OR_VFO_FREQ, PROMPT_THRESHOLD_3);
 				}
 
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 		}
@@ -1272,7 +1363,7 @@ static void selectPrevNextZone(bool nextZone)
 	{
 		if (nonVolatileSettings.currentZone == 0)
 		{
-			settingsSet(nonVolatileSettings.currentZone, (numZones - 1));
+			settingsSet(nonVolatileSettings.currentZone, (int16_t) (numZones - 1));
 		}
 		else
 		{
@@ -1280,21 +1371,31 @@ static void selectPrevNextZone(bool nextZone)
 		}
 	}
 
+/*
+ * VK3KYY
+ * I don't understand why these should be reset when changing zones.
+ * Only the change to TG override will be clear to the operator.
+ *
+ * Changing zones should only change the zone.
+ * I can't see a compelling reason to override what the operator has setup just because they change zones
+ *
 	settingsSet(nonVolatileSettings.overrideTG, 0); // remove any TG override
-	tsSetOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
+
+	tsSetManualOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);// remove any TS override
+*/
 	settingsSet(nonVolatileSettings.currentChannelIndexInZone, 0);// Since we are switching zones the channel index should be reset
-	channelScreenChannelData.rxFreq = 0x00; // Flag to the Channel screen that the channel data is now invalid and needs to be reloaded
+	currentChannelData->rxFreq = 0x00; // Flag to the Channel screen that the channel data is now invalid and needs to be reloaded
 }
 
 static void handleUpKey(uiEvent_t *ev)
 {
-	displaySquelch = false;
+	uiDataGlobal.displaySquelch = false;
 
 	if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 	{
 		selectPrevNextZone(true);
 		menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, false);
-		menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen redraw
+		uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen redraw
 
 		if (nonVolatileSettings.currentZone == 0)
 		{
@@ -1304,37 +1405,50 @@ static void handleUpKey(uiEvent_t *ev)
 	}
 	else
 	{
+		int16_t nextChan;
+
 		lastHeardClearLastID();
-		if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+		if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 		{
-			do
+			if (currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone > 1)
 			{
-				settingsIncrement(nonVolatileSettings.currentChannelIndexInAllZone, 1);
+				nextChan = nonVolatileSettings.currentChannelIndexInAllZone;
 
-				if (nonVolatileSettings.currentChannelIndexInAllZone > CODEPLUG_CONTACTS_MAX)
+				// All Channels virtual zone
+				do
 				{
-					settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, 1);
-					menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
-				}
+					nextChan = ((((nextChan - 1) + 1) % currentZone.NOT_IN_CODEPLUGDATA_highestIndex) + 1);
 
-			} while(!codeplugChannelIndexIsValid(nonVolatileSettings.currentChannelIndexInAllZone));
+					if (nextChan == CODEPLUG_CONTACTS_MIN)
+					{
+						menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+					}
+
+				} while (!codeplugAllChannelsIndexIsInUse(nextChan));
+
+				settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, nextChan);
+			}
 		}
 		else
 		{
-			settingsIncrement(nonVolatileSettings.currentChannelIndexInZone, 1);
-			if (nonVolatileSettings.currentChannelIndexInZone > currentZone.NOT_IN_MEMORY_numChannelsInZone - 1)
+			if (currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone > 1)
 			{
-				settingsSet(nonVolatileSettings.currentChannelIndexInZone, 0);
-				menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
-			}
+				nextChan = ((nonVolatileSettings.currentChannelIndexInZone + 1) % currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone);
 
+				settingsSet(nonVolatileSettings.currentChannelIndexInZone, nextChan);
+
+				if (nonVolatileSettings.currentChannelIndexInZone == 0)
+				{
+					menuChannelExitStatus |= (MENU_STATUS_LIST_TYPE | MENU_STATUS_FORCE_FIRST);
+				}
+			}
 		}
-		scanTimer = 500;
-		scanState = SCAN_SCANNING;
+		uiDataGlobal.Scan.timer = 500;
+		uiDataGlobal.Scan.state = SCAN_SCANNING;
 	}
 
 	loadChannelData(false, true);
-	menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 	uiChannelModeUpdateScreen(0);
 }
 #endif // ! PLATFORM_GD77S
@@ -1343,10 +1457,97 @@ static void handleUpKey(uiEvent_t *ev)
 // Quick Menu functions
 
 enum CHANNEL_SCREEN_QUICK_MENU_ITEMS {  CH_SCREEN_QUICK_MENU_COPY2VFO = 0, CH_SCREEN_QUICK_MENU_COPY_FROM_VFO,
-	CH_SCREEN_QUICK_MENU_FILTER,
+	CH_SCREEN_QUICK_MENU_FILTER_FM,
+	CH_SCREEN_QUICK_MENU_FILTER_DMR,
 	CH_SCREEN_QUICK_MENU_FILTER_DMR_CC,
 	CH_SCREEN_QUICK_MENU_FILTER_DMR_TS,
 	NUM_CH_SCREEN_QUICK_MENU_ITEMS };// The last item in the list is used so that we automatically get a total number of items in the list
+
+menuStatus_t uiChannelModeQuickMenu(uiEvent_t *ev, bool isFirstRun)
+{
+	if (isFirstRun)
+	{
+		if (quickmenuChannelFromVFOHandled)
+		{
+			quickmenuChannelFromVFOHandled = false;
+			menuSystemPopAllAndDisplayRootMenu();
+			return MENU_STATUS_SUCCESS;
+		}
+
+		uiChannelModeStopScanning();
+		uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel = nonVolatileSettings.dmrDestinationFilter;
+		uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel = nonVolatileSettings.dmrCcTsFilter;
+		uiDataGlobal.QuickMenu.tmpAnalogFilterLevel = nonVolatileSettings.analogFilterLevel;
+		menuDataGlobal.endIndex = NUM_CH_SCREEN_QUICK_MENU_ITEMS;
+
+		voicePromptsInit();
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendLanguageString(&currentLanguage->quick_menu);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+
+		updateQuickMenuScreen(true);
+		return (MENU_STATUS_LIST_TYPE | MENU_STATUS_SUCCESS);
+	}
+	else
+	{
+		menuQuickChannelExitStatus = MENU_STATUS_SUCCESS;
+
+		if (ev->hasEvent)
+		{
+			handleQuickMenuEvent(ev);
+		}
+	}
+
+	return menuQuickChannelExitStatus;
+}
+
+static bool validateOverwriteChannel(void)
+{
+	quickmenuChannelFromVFOHandled = true;
+
+	if (uiDataGlobal.MessageBox.keyPressed == KEY_GREEN)
+	{
+		struct_codeplugContact_t vfoContact;
+		int8_t vfoTS = -1;
+
+		uiVFOLoadContact(&vfoContact);
+		memcpy(&currentChannelData->rxFreq, &settingsVFOChannel[nonVolatileSettings.currentVFONumber].rxFreq, CODEPLUG_CHANNEL_DATA_STRUCT_SIZE - 16);// Don't copy the name of the vfo, which are in the first 16 bytes
+		// Find out which TS was in use.
+		if ((nonVolatileSettings.overrideTG == 0) && (vfoContact.reserve1 & 0x01) == 0x00)
+		{
+			vfoTS = ((vfoContact.reserve1 & 0x02) != 0);
+		}
+		else
+		{
+			vfoTS = tsGetManualOverride((Channel_t)nonVolatileSettings.currentVFONumber);
+
+			// No Override, use the TS from the Channel
+			if (vfoTS == 0)
+			{
+				vfoTS = ((settingsVFOChannel[nonVolatileSettings.currentVFONumber].flag2 & 0x40) != 0);
+			}
+			else
+			{
+				vfoTS--; // convert to real TS
+			}
+		}
+
+		if (vfoTS == 0)
+		{
+			currentChannelData->flag2 &= 0xBF;
+		}
+		else
+		{
+			currentChannelData->flag2 |= 0x40;
+		}
+
+		codeplugChannelSaveDataForIndex(uiDataGlobal.currentSelectedChannelNumber, currentChannelData);
+	}
+
+	return true;
+}
 
 static void updateQuickMenuScreen(bool isFirstRun)
 {
@@ -1376,59 +1577,38 @@ static void updateQuickMenuScreen(bool isFirstRun)
 			case CH_SCREEN_QUICK_MENU_COPY_FROM_VFO:
 				rightSideConst = (char * const *)&currentLanguage->vfoToChannel;
 				break;
-			case CH_SCREEN_QUICK_MENU_FILTER:
-
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+			case CH_SCREEN_QUICK_MENU_FILTER_FM:
+				leftSide = (char * const *)&currentLanguage->filter;
+				if (uiDataGlobal.QuickMenu.tmpAnalogFilterLevel == 0)
 				{
-					leftSide = (char * const *)&currentLanguage->dmr_filter;
-					if (tmpQuickMenuDmrDestinationFilterLevel == 0)
-					{
-						rightSideConst = (char * const *)&currentLanguage->none;
-					}
-					else
-					{
-						snprintf(rightSideVar, bufferLen, "%s", DMR_DESTINATION_FILTER_LEVELS[tmpQuickMenuDmrDestinationFilterLevel - 1]);
-					}
-
+					rightSideConst = (char * const *)&currentLanguage->none;
 				}
 				else
 				{
-					leftSide = (char * const *)&currentLanguage->filter;
-					if (tmpQuickMenuAnalogFilterLevel == 0)
-					{
-						rightSideConst = (char * const *)&currentLanguage->none;
-					}
-					else
-					{
-						snprintf(rightSideVar, bufferLen, "%s", ANALOG_FILTER_LEVELS[tmpQuickMenuAnalogFilterLevel - 1]);
-					}
+					snprintf(rightSideVar, bufferLen, "%s", ANALOG_FILTER_LEVELS[uiDataGlobal.QuickMenu.tmpAnalogFilterLevel - 1]);
+				}
+				break;
+			case CH_SCREEN_QUICK_MENU_FILTER_DMR:
+				leftSide = (char * const *)&currentLanguage->dmr_filter;
+				if (uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel == 0)
+				{
+					rightSideConst = (char * const *)&currentLanguage->none;
+				}
+				else
+				{
+					snprintf(rightSideVar, bufferLen, "%s", DMR_DESTINATION_FILTER_LEVELS[uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel - 1]);
 				}
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_CC:
 				leftSide = (char * const *)&currentLanguage->dmr_cc_filter;
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
-				{
-					rightSideConst = (tmpQuickMenuDmrCcTsFilterLevel & DMR_CC_FILTER_PATTERN)?(char * const *)&currentLanguage->on:(char * const *)&currentLanguage->off;
-				}
-				else
-				{
-					rightSideConst = (char * const *)&currentLanguage->n_a;
-				}
+				rightSideConst = (uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel & DMR_CC_FILTER_PATTERN)?(char * const *)&currentLanguage->on:(char * const *)&currentLanguage->off;
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_TS:
 				leftSide = (char * const *)&currentLanguage->dmr_ts_filter;
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
-				{
-					rightSideConst = (tmpQuickMenuDmrCcTsFilterLevel & DMR_TS_FILTER_PATTERN)?(char * const *)&currentLanguage->on:(char * const *)&currentLanguage->off;
-
-				}
-				else
-				{
-					rightSideConst = (char * const *)&currentLanguage->n_a;
-				}
+				rightSideConst = (uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel & DMR_TS_FILTER_PATTERN)?(char * const *)&currentLanguage->on:(char * const *)&currentLanguage->off;
 				break;
 			default:
-				strcpy(buf, "");
+				buf[0] = 0;
 		}
 
 		if (leftSide != NULL)
@@ -1460,14 +1640,12 @@ static void updateQuickMenuScreen(bool isFirstRun)
 			{
 				voicePromptsAppendLanguageString((const char * const *)rightSideConst);
 			}
-			voicePromptsPlay();
+			promptsPlayNotAfterTx();
 		}
-		buf[bufferLen - 1] = 0;
 		menuDisplayEntry(i, mNum, buf);
 	}
 
 	ucRender();
-	displayLightTrigger();
 }
 
 static void handleQuickMenuEvent(uiEvent_t *ev)
@@ -1490,36 +1668,72 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 	}
 	else if (KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
 	{
-		switch(gMenusCurrentItemIndex)
+		switch(menuDataGlobal.currentItemIndex)
 		{
 			case CH_SCREEN_QUICK_MENU_COPY2VFO:
-				memcpy(&settingsVFOChannel[nonVolatileSettings.currentVFONumber].rxFreq, &channelScreenChannelData.rxFreq, sizeof(struct_codeplugChannel_t) - 16);// Don't copy the name of channel, which are in the first 16 bytes
-				menuSystemPopAllAndDisplaySpecificRootMenu(UI_VFO_MODE, true);
+				{
+					int8_t currentTS = trxGetDMRTimeSlot();
+
+					memcpy(&settingsVFOChannel[nonVolatileSettings.currentVFONumber].rxFreq, &currentChannelData->rxFreq, CODEPLUG_CHANNEL_DATA_STRUCT_SIZE - 16);// Don't copy the name of channel, which are in the first 16 bytes
+					settingsVFOChannel[nonVolatileSettings.currentVFONumber].rxTone = currentChannelData->rxTone;
+					settingsVFOChannel[nonVolatileSettings.currentVFONumber].txTone = currentChannelData->txTone;
+
+					if (nonVolatileSettings.overrideTG == 0)
+					{
+						nonVolatileSettings.overrideTG = trxTalkGroupOrPcId;
+					}
+
+					// Set TS override
+					tsSetManualOverride(((Channel_t)nonVolatileSettings.currentVFONumber), currentTS + 1);
+
+					if (currentTS == 0)
+					{
+						settingsVFOChannel[nonVolatileSettings.currentVFONumber].flag2 &= 0xBF;
+					}
+					else
+					{
+						settingsVFOChannel[nonVolatileSettings.currentVFONumber].flag2 |= 0x40;
+					}
+
+					menuSystemPopAllAndDisplaySpecificRootMenu(UI_VFO_MODE, true);
+				}
 				break;
 			case CH_SCREEN_QUICK_MENU_COPY_FROM_VFO:
-				memcpy(&channelScreenChannelData.rxFreq, &settingsVFOChannel[nonVolatileSettings.currentVFONumber].rxFreq, sizeof(struct_codeplugChannel_t)- 16);// Don't copy the name of the vfo, which are in the first 16 bytes
-				codeplugChannelSaveDataForIndex(settingsCurrentChannelNumber, &channelScreenChannelData);
+				if (quickmenuChannelFromVFOHandled == false)
+				{
+					snprintf(uiDataGlobal.MessageBox.message, MESSAGEBOX_MESSAGE_LEN_MAX, "%s\n%s", currentLanguage->overwrite_qm, currentLanguage->please_confirm);
+					uiDataGlobal.MessageBox.type = MESSAGEBOX_TYPE_INFO;
+					uiDataGlobal.MessageBox.decoration = MESSAGEBOX_DECORATION_FRAME;
+					uiDataGlobal.MessageBox.buttons = MESSAGEBOX_BUTTONS_YESNO;
+					uiDataGlobal.MessageBox.validatorCallback = validateOverwriteChannel;
+
+					menuSystemPushNewMenu(UI_MESSAGE_BOX);
+					voicePromptsInit();
+					voicePromptsAppendLanguageString(&currentLanguage->overwrite_qm);
+					voicePromptsAppendLanguageString(&currentLanguage->please_confirm);
+					voicePromptsPlay();
+				}
+				return;
+				break;
+			case CH_SCREEN_QUICK_MENU_FILTER_FM:
+				settingsSet(nonVolatileSettings.analogFilterLevel, (uint8_t) uiDataGlobal.QuickMenu.tmpAnalogFilterLevel);
+				trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 				menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
 				break;
-			case CH_SCREEN_QUICK_MENU_FILTER:
+			case CH_SCREEN_QUICK_MENU_FILTER_DMR:
+				settingsSet(nonVolatileSettings.dmrDestinationFilter, (uint8_t) uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel);
 				if (trxGetMode() == RADIO_MODE_DIGITAL)
 				{
-					settingsSet(nonVolatileSettings.dmrDestinationFilter, tmpQuickMenuDmrDestinationFilterLevel);
 					init_digital_DMR_RX();
 					disableAudioAmp(AUDIO_AMP_MODE_RF);
-				}
-				else
-				{
-					settingsSet(nonVolatileSettings.analogFilterLevel, tmpQuickMenuAnalogFilterLevel);
-					trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 				}
 				menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_CC:
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_TS:
+				settingsSet(nonVolatileSettings.dmrCcTsFilter, (uint8_t) uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel);
 				if (trxGetMode() == RADIO_MODE_DIGITAL)
 				{
-					settingsSet(nonVolatileSettings.dmrCcTsFilter, tmpQuickMenuDmrCcTsFilterLevel);
 					init_digital_DMR_RX();
 					disableAudioAmp(AUDIO_AMP_MODE_RF);
 				}
@@ -1531,40 +1745,30 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 	else if (KEYCHECK_PRESS(ev->keys, KEY_RIGHT))
 	{
 		isDirty = true;
-		switch(gMenusCurrentItemIndex)
+		switch(menuDataGlobal.currentItemIndex)
 		{
-			case CH_SCREEN_QUICK_MENU_FILTER:
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+			case CH_SCREEN_QUICK_MENU_FILTER_FM:
+				if (uiDataGlobal.QuickMenu.tmpAnalogFilterLevel < NUM_ANALOG_FILTER_LEVELS - 1)
 				{
-					if (tmpQuickMenuDmrDestinationFilterLevel < NUM_DMR_DESTINATION_FILTER_LEVELS - 1)
-					{
-						tmpQuickMenuDmrDestinationFilterLevel++;
-					}
+					uiDataGlobal.QuickMenu.tmpAnalogFilterLevel++;
 				}
-				else
+				break;
+			case CH_SCREEN_QUICK_MENU_FILTER_DMR:
+				if (uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel < NUM_DMR_DESTINATION_FILTER_LEVELS - 1)
 				{
-					if (tmpQuickMenuAnalogFilterLevel < NUM_ANALOG_FILTER_LEVELS - 1)
-					{
-						tmpQuickMenuAnalogFilterLevel++;
-					}
+					uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel++;
 				}
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_CC:
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+				if (!(uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel & DMR_CC_FILTER_PATTERN))
 				{
-					if (!(tmpQuickMenuDmrCcTsFilterLevel & DMR_CC_FILTER_PATTERN))
-					{
-						tmpQuickMenuDmrCcTsFilterLevel |= DMR_CC_FILTER_PATTERN;
-					}
+					uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel |= DMR_CC_FILTER_PATTERN;
 				}
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_TS:
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+				if (!(uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel & DMR_TS_FILTER_PATTERN))
 				{
-					if (!(tmpQuickMenuDmrCcTsFilterLevel & DMR_TS_FILTER_PATTERN))
-					{
-						tmpQuickMenuDmrCcTsFilterLevel |= DMR_TS_FILTER_PATTERN;
-					}
+					uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel |= DMR_TS_FILTER_PATTERN;
 				}
 				break;
 
@@ -1575,40 +1779,30 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 		if (KEYCHECK_PRESS(ev->keys, KEY_LEFT))
 		{
 			isDirty = true;
-			switch(gMenusCurrentItemIndex)
+			switch(menuDataGlobal.currentItemIndex)
 			{
-			case CH_SCREEN_QUICK_MENU_FILTER:
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+			case CH_SCREEN_QUICK_MENU_FILTER_FM:
+				if (uiDataGlobal.QuickMenu.tmpAnalogFilterLevel > ANALOG_FILTER_NONE)
 				{
-					if (tmpQuickMenuDmrDestinationFilterLevel > DMR_DESTINATION_FILTER_NONE)
-					{
-						tmpQuickMenuDmrDestinationFilterLevel--;
-					}
+					uiDataGlobal.QuickMenu.tmpAnalogFilterLevel--;
 				}
-				else
+				break;
+			case CH_SCREEN_QUICK_MENU_FILTER_DMR:
+				if (uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel > DMR_DESTINATION_FILTER_NONE)
 				{
-					if (tmpQuickMenuAnalogFilterLevel > ANALOG_FILTER_NONE)
-					{
-						tmpQuickMenuAnalogFilterLevel--;
-					}
+					uiDataGlobal.QuickMenu.tmpDmrDestinationFilterLevel--;
 				}
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_CC:
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+				if ((uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel & DMR_CC_FILTER_PATTERN))
 				{
-					if ((tmpQuickMenuDmrCcTsFilterLevel & DMR_CC_FILTER_PATTERN))
-					{
-						tmpQuickMenuDmrCcTsFilterLevel &= ~DMR_CC_FILTER_PATTERN;
-					}
+					uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel &= ~DMR_CC_FILTER_PATTERN;
 				}
 				break;
 			case CH_SCREEN_QUICK_MENU_FILTER_DMR_TS:
-				if (trxGetMode() == RADIO_MODE_DIGITAL)
+				if ((uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel & DMR_TS_FILTER_PATTERN))
 				{
-					if ((tmpQuickMenuDmrCcTsFilterLevel & DMR_TS_FILTER_PATTERN))
-					{
-						tmpQuickMenuDmrCcTsFilterLevel &= ~DMR_TS_FILTER_PATTERN;
-					}
+					uiDataGlobal.QuickMenu.tmpDmrCcTsFilterLevel &= ~DMR_TS_FILTER_PATTERN;
 				}
 				break;
 			}
@@ -1618,7 +1812,7 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 			if (KEYCHECK_PRESS(ev->keys, KEY_DOWN))
 			{
 				isDirty = true;
-				menuSystemMenuIncrement(&gMenusCurrentItemIndex, NUM_CH_SCREEN_QUICK_MENU_ITEMS);
+				menuSystemMenuIncrement(&menuDataGlobal.currentItemIndex, NUM_CH_SCREEN_QUICK_MENU_ITEMS);
 				menuQuickChannelExitStatus |= MENU_STATUS_LIST_TYPE;
 			}
 			else
@@ -1626,7 +1820,7 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 				if (KEYCHECK_PRESS(ev->keys, KEY_UP))
 				{
 					isDirty = true;
-					menuSystemMenuDecrement(&gMenusCurrentItemIndex, NUM_CH_SCREEN_QUICK_MENU_ITEMS);
+					menuSystemMenuDecrement(&menuDataGlobal.currentItemIndex, NUM_CH_SCREEN_QUICK_MENU_ITEMS);
 					menuQuickChannelExitStatus |= MENU_STATUS_LIST_TYPE;
 				}
 			}
@@ -1639,52 +1833,48 @@ static void handleQuickMenuEvent(uiEvent_t *ev)
 	}
 }
 
-menuStatus_t uiChannelModeQuickMenu(uiEvent_t *ev, bool isFirstRun)
+//Scan Mode
+static void scanStart(bool longPressBeep)
 {
-	if (isFirstRun)
+	// At least two channels are needed to run a scan process.
+	if (canCurrentZoneBeScanned(&uiDataGlobal.Scan.availableChannelsCount) == false)
 	{
-		uiChannelModeStopScanning();
-		tmpQuickMenuDmrDestinationFilterLevel = nonVolatileSettings.dmrDestinationFilter;
-		tmpQuickMenuDmrCcTsFilterLevel = nonVolatileSettings.dmrCcTsFilter;
-		tmpQuickMenuAnalogFilterLevel = nonVolatileSettings.analogFilterLevel;
+		menuChannelExitStatus |= MENU_STATUS_ERROR;
+		return;
+	}
 
-		voicePromptsInit();
-		voicePromptsAppendPrompt(PROMPT_SILENCE);
-		voicePromptsAppendPrompt(PROMPT_SILENCE);
-		voicePromptsAppendLanguageString(&currentLanguage->quick_menu);
-		voicePromptsAppendPrompt(PROMPT_SILENCE);
-		voicePromptsAppendPrompt(PROMPT_SILENCE);
+	if (voicePromptsIsPlaying())
+	{
+		voicePromptsTerminate();
+	}
 
-		updateQuickMenuScreen(true);
-		return (MENU_STATUS_LIST_TYPE | MENU_STATUS_SUCCESS);
+	directChannelNumber = 0;
+	uiDataGlobal.Scan.direction = 1;
+
+	// Clear all nuisance delete channels at start of scanning
+	for (int i = 0; i < MAX_ZONE_SCAN_NUISANCE_CHANNELS; i++)
+	{
+		uiDataGlobal.Scan.nuisanceDelete[i] = -1;
+	}
+	uiDataGlobal.Scan.nuisanceDeleteIndex = 0;
+
+	uiDataGlobal.Scan.active = true;
+	uiDataGlobal.Scan.timer = SCAN_SHORT_PAUSE_TIME;
+	uiDataGlobal.Scan.state = SCAN_SCANNING;
+	uiDataGlobal.Scan.lastIteration = false;
+
+	uiDataGlobal.Scan.stepTimeMilliseconds = settingsGetScanStepTimeMilliseconds();
+
+	if ((trxGetMode() == RADIO_MODE_DIGITAL) && (trxDMRModeRx != DMR_MODE_SFR) && (uiDataGlobal.Scan.stepTimeMilliseconds < SCAN_DMR_SIMPLEX_MIN_INTERVAL))
+	{
+		uiDataGlobal.Scan.timerReload = SCAN_DMR_SIMPLEX_MIN_INTERVAL;
 	}
 	else
 	{
-		menuQuickChannelExitStatus = MENU_STATUS_SUCCESS;
-
-		if (ev->hasEvent)
-		{
-			handleQuickMenuEvent(ev);
-		}
+		uiDataGlobal.Scan.timerReload = uiDataGlobal.Scan.stepTimeMilliseconds;
 	}
 
-	return menuQuickChannelExitStatus;
-}
-
-//Scan Mode
-static void startScan(bool longPressBeep)
-{
-	scanDirection = 1;
-
-	for (int i = 0; i < MAX_ZONE_SCAN_NUISANCE_CHANNELS; i++)						//clear all nuisance delete channels at start of scanning
-	{
-		nuisanceDelete[i] = -1;
-	}
-	nuisanceDeleteIndex = 0;
-
-	scanActive = true;
-	scanTimer = SCAN_SHORT_PAUSE_TIME;
-	scanState = SCAN_SCANNING;
+	uiDataGlobal.Scan.scanType = SCAN_TYPE_NORMAL_STEP;
 
 	// Need to set the melody here, otherwise long press will remain silent
 	// since beeps aren't allowed while scanning
@@ -1693,10 +1883,8 @@ static void startScan(bool longPressBeep)
 		soundSetMelody(MELODY_KEY_LONG_BEEP);
 	}
 
-	menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
-
-	//get current channel index
-	if (currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+	// Set current channel index
+	if (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 	{
 		nextChannelIndex = nonVolatileSettings.currentChannelIndexInAllZone;
 	}
@@ -1704,11 +1892,11 @@ static void startScan(bool longPressBeep)
 	{
 		nextChannelIndex = currentZone.channels[nonVolatileSettings.currentChannelIndexInZone];
 	}
-	nextChannelReady = false;
 
+	nextChannelReady = false;
 }
 
-static void uiChannelUpdateTrxID(void)
+static void updateTrxID(void)
 {
 	if (nonVolatileSettings.overrideTG != 0)
 	{
@@ -1716,49 +1904,65 @@ static void uiChannelUpdateTrxID(void)
 	}
 	else
 	{
-		tsSetOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
-
+		/*
+		 * VK3KYY
+		 * I can't see a compelling reason to remove the TS override when changing TG
+		 * The function trxUpdateTsForCurrentChannelWithSpecifiedContact(), used below, is used to handle the TS
+		 *
+			tsSetManualOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
+		*/
 		if ((currentRxGroupData.name[0] != 0) && (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] < currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup))
 		{
 			codeplugContactGetDataForIndex(currentRxGroupData.contacts[nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE]], &currentContactData);
 		}
 		else
 		{
-			codeplugContactGetDataForIndex(channelScreenChannelData.contact, &currentContactData);
+			codeplugContactGetDataForIndex(currentChannelData->contact, &currentContactData);
 		}
+
+		tsSetContactHasBeenOverriden(CHANNEL_CHANNEL, false);
 
 		trxUpdateTsForCurrentChannelWithSpecifiedContact(&currentContactData);
 		trxTalkGroupOrPcId = currentContactData.tgNumber;
+
 		if (currentContactData.callType == CONTACT_CALLTYPE_PC)
 		{
 			trxTalkGroupOrPcId |= (PC_CALL_FLAG << 24);
 		}
 	}
 	lastHeardClearLastID();
-	menuClearPrivateCall();
+	menuPrivateCallClear();
 }
 
 static void scanning(void)
 {
-	if((scanState == SCAN_SCANNING) && (scanTimer > SCAN_SKIP_CHANNEL_INTERVAL) && (scanTimer < (SCAN_TOTAL_INTERVAL - SCAN_FREQ_CHANGE_SETTLING_INTERVAL)))							    			//after initial settling time
+	if((uiDataGlobal.Scan.state == SCAN_SCANNING) && (uiDataGlobal.Scan.timer > SCAN_SKIP_CHANNEL_INTERVAL) && (uiDataGlobal.Scan.timer < (uiDataGlobal.Scan.timerReload - SCAN_FREQ_CHANGE_SETTLING_INTERVAL)))							    			//after initial settling time
 	{
 		//test for presence of RF Carrier.
-		// In FM mode the dmr slot_state will always be DMR_STATE_IDLE
-		if (slot_state != DMR_STATE_IDLE)
+		// In FM mode the DMR slot_state will always be DMR_STATE_IDLE
+		if ((slot_state != DMR_STATE_IDLE) && ((dmrMonitorCapturedTS != -1) &&
+				(((trxDMRModeRx == DMR_MODE_DMO) && (dmrMonitorCapturedTS == trxGetDMRTimeSlot())) || trxDMRModeRx == DMR_MODE_RMO)))
 		{
+			uiDataGlobal.Scan.state = SCAN_PAUSED;
+
+#if ! defined(PLATFORM_GD77S) // GD77S handle voice prompts on its own
+			// Reload the channel as voice prompts aren't set while scanning
+			if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
+			{
+				loadChannelData(false, true);
+			}
+#endif
+
 			if (nonVolatileSettings.scanModePause == SCAN_MODE_STOP)
 			{
-				scanActive = false;
-				// Just update the header (to prevent hidden mode)
-				ucClearRows(0, 2, false);
-				menuUtilityRenderHeader();
-				ucRenderRows(0, 2);
+				uiChannelModeStopScanning();
 				return;
 			}
 			else
 			{
-				scanState = SCAN_PAUSED;
-				scanTimer = nonVolatileSettings.scanDelay * 1000;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen refresh
+
+				uiDataGlobal.Scan.timer = nonVolatileSettings.scanDelay * 1000;
 			}
 		}
 		else
@@ -1769,74 +1973,69 @@ static void scanning(void)
 				// Reload the channel as voice prompts aren't set while scanning
 				if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
 				{
-					scanActive = false;
 					loadChannelData(false, true);
-					scanActive = true;
 				}
 #endif
-
 				if (nonVolatileSettings.scanModePause == SCAN_MODE_STOP)
 				{
-					scanActive = false;
-					// Just update the header (to prevent hidden mode)
-					ucClearRows(0, 2, false);
-					menuUtilityRenderHeader();
-					ucRenderRows(0, 2);
+					uiChannelModeStopScanning();
 					return;
 				}
 				else
 				{
-					scanTimer = SCAN_SHORT_PAUSE_TIME;	//start short delay to allow full detection of signal
-					scanState = SCAN_SHORT_PAUSED;		//state 1 = pause and test for valid signal that produces audio
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen refresh
+
+					uiDataGlobal.Scan.timer = SCAN_SHORT_PAUSE_TIME;	//start short delay to allow full detection of signal
+					uiDataGlobal.Scan.state = SCAN_SHORT_PAUSED;		//state 1 = pause and test for valid signal that produces audio
 				}
 
 			}
 		}
 	}
 
-	if(((scanState == SCAN_PAUSED) && (nonVolatileSettings.scanModePause == SCAN_MODE_HOLD)) || (scanState == SCAN_SHORT_PAUSED))   // only do this once if scan mode is PAUSE do it every time if scan mode is HOLD
+	// Only do this once if scan mode is PAUSE do it every time if scan mode is HOLD
+	if(((uiDataGlobal.Scan.state == SCAN_PAUSED) && (nonVolatileSettings.scanModePause == SCAN_MODE_HOLD)) || (uiDataGlobal.Scan.state == SCAN_SHORT_PAUSED))
 	{
-	    //if (GPIO_PinRead(GPIO_audio_amp_enable, Pin_audio_amp_enable) == 1)	    	// if speaker on we must be receiving a signal so extend the time before resuming scan.
 	    if (getAudioAmpStatus() & AUDIO_AMP_MODE_RF)
 	    {
-	    	scanTimer = nonVolatileSettings.scanDelay * 1000;
-	    	scanState = SCAN_PAUSED;
+	    	uiDataGlobal.Scan.timer = nonVolatileSettings.scanDelay * 1000;
+	    	uiDataGlobal.Scan.state = SCAN_PAUSED;
 	    }
 	}
 
-	if (!nextChannelReady)
+	if(uiDataGlobal.Scan.timer > 0)
 	{
-		searchNextChannel();
-	}
+		if (nextChannelReady == false)
+		{
+			scanSearchForNextChannel();
+		}
 
-	if(scanTimer > 0)
-	{
-		scanTimer--;
+		uiDataGlobal.Scan.timer--;
 	}
 	else
 	{
 		if (nextChannelReady)
 		{
-			setNextChannel();
-			trx_measure_count = 0;
+			scanApplyNextChannel();
 
-			if ((trxGetMode() == RADIO_MODE_DIGITAL) && (trxDMRMode == DMR_MODE_ACTIVE) && (SCAN_TOTAL_INTERVAL < SCAN_DMR_SIMPLEX_MIN_INTERVAL))				//allow extra time if scanning a simplex DMR channel.
+			// When less than 2 channel remain in the Zone
+			if (uiDataGlobal.Scan.lastIteration)
 			{
-				scanTimer = SCAN_DMR_SIMPLEX_MIN_INTERVAL;
-			}
-			else
-			{
-				scanTimer = SCAN_TOTAL_INTERVAL;
+				uiChannelModeStopScanning();
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiChannelModeUpdateScreen(0);
+				return;
 			}
 		}
 
-		scanState = SCAN_SCANNING;													//state 0 = settling and test for carrier present.
+		uiDataGlobal.Scan.state = SCAN_SCANNING;													//state 0 = settling and test for carrier present.
 	}
 }
 
 void uiChannelModeStopScanning(void)
 {
-	scanActive = false;
+	uiDataGlobal.Scan.active = false;
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen refresh
 
 #if ! defined(PLATFORM_GD77S) // GD77S handle voice prompts on its own
 	// Reload the channel as voice prompts aren't set while scanning
@@ -1849,35 +2048,74 @@ void uiChannelModeStopScanning(void)
 
 bool uiChannelModeIsScanning(void)
 {
-	return scanActive;
+	return uiDataGlobal.Scan.active;
 }
 
 void uiChannelModeColdStart(void)
 {
-	channelScreenChannelData.rxFreq = 0;	// Force to re-read codeplug data (needed due to "All Channels" translation)
+	currentChannelData->rxFreq = 0;	// Force to re-read codeplug data (needed due to "All Channels" translation)
 }
 
 
 
 #if defined(PLATFORM_GD77S)
+bool uiChannelModeTransmitDTMFContactForGD77S(void)
+{
+	if (GD77SParameters.uiMode == GD77S_UIMODE_DTMF_CONTACTS)
+	{
+		if (GD77SParameters.dtmfListCount > 0)
+		{
+			// start dtmf sequence
+			if(dtmfSequenceIsKeying() == false)
+			{
+				struct_codeplugDTMFContact_t dtmfContact;
+
+				if (voicePromptsIsPlaying())
+				{
+					voicePromptsTerminate();
+				}
+
+				codeplugDTMFContactGetDataForNumber(GD77SParameters.dtmfListSelected + 1, &dtmfContact);
+				dtmfSequencePrepare(dtmfContact.code, true);
+			}
+			else
+			{
+				dtmfSequenceStop();
+				dtmfSequenceTick(false);
+				dtmfSequenceReset();
+			}
+		}
+		else
+		{
+			voicePromptsInit();
+			voicePromptsAppendLanguageString(&currentLanguage->empty_list);
+			voicePromptsPlay();
+		}
+
+		return true;
+	}
+
+	return false;
+}
+
 void toggleTimeslotForGD77S(void)
 {
 	if (trxGetMode() == RADIO_MODE_DIGITAL)
 	{
 		// Toggle timeslot
 		trxSetDMRTimeSlot(1 - trxGetDMRTimeSlot());
-		tsSetOverride(CHANNEL_CHANNEL, (trxGetDMRTimeSlot() + 1));
+		tsSetManualOverride(CHANNEL_CHANNEL, (trxGetDMRTimeSlot() + 1));
 
 		//	init_digital();
 		disableAudioAmp(AUDIO_AMP_MODE_RF);
 		clearActiveDMRID();
 		lastHeardClearLastID();
-		menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+		uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 		uiChannelModeUpdateScreen(0);
 	}
 }
 
-void heartBeatActivityForGD77S(uiEvent_t *ev)
+void uiChannelModeHeartBeatActivityForGD77S(uiEvent_t *ev)
 {
 	static const uint32_t periods[] = { 5000, 100, 100, 100, 100, 100 };
 	static const uint32_t periodsScan[] = { 2000, 50, 2000, 50, 2000, 50 };
@@ -1887,31 +2125,31 @@ void heartBeatActivityForGD77S(uiEvent_t *ev)
 	// <paranoid_mode>
 	//   We use real time GPIO readouts, as LED could be turned on/off by another task.
 	// </paranoid_mode>
-	if ((GPIO_PinRead(GPIO_LEDred, Pin_LEDred) || GPIO_PinRead(GPIO_LEDgreen, Pin_LEDgreen)) // Any led is ON
-			&& (trxTransmissionEnabled || (ev->buttons & BUTTON_PTT) || (getAudioAmpStatus() & (AUDIO_AMP_MODE_RF | AUDIO_AMP_MODE_BEEP | AUDIO_AMP_MODE_PROMPT)) || trxCarrierDetected() || ev->hasEvent)) // we're transmitting, or receiving, or user interaction.
+	if ((LEDs_PinRead(GPIO_LEDred, Pin_LEDred) || LEDs_PinRead(GPIO_LEDgreen, Pin_LEDgreen)) // Any led is ON
+			&& (trxTransmissionEnabled || (uiDataGlobal.DTMFContactList.isKeying) || (ev->buttons & BUTTON_PTT) || (getAudioAmpStatus() & (AUDIO_AMP_MODE_RF | AUDIO_AMP_MODE_BEEP | AUDIO_AMP_MODE_PROMPT)) || trxCarrierDetected() || ev->hasEvent)) // we're transmitting, or receiving, or user interaction.
 	{
 		// Turn off the red LED, if not transmitting
-		if (GPIO_PinRead(GPIO_LEDred, Pin_LEDred) // Red is ON
-				&& ((trxTransmissionEnabled == false) || ((ev->buttons & BUTTON_PTT) == 0))) // No TX
+		if (LEDs_PinRead(GPIO_LEDred, Pin_LEDred) // Red is ON
+				&& ((uiDataGlobal.DTMFContactList.isKeying == false) && ((trxTransmissionEnabled == false) || ((ev->buttons & BUTTON_PTT) == 0)))) // No TX
 		{
-			GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
+			LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
 		}
 
 		// Turn off the green LED, if not receiving, or no AF output
-		if (GPIO_PinRead(GPIO_LEDgreen, Pin_LEDgreen)) // Green is ON
+		if (LEDs_PinRead(GPIO_LEDgreen, Pin_LEDgreen)) // Green is ON
 		{
-			if ((trxTransmissionEnabled || (ev->buttons & BUTTON_PTT))
+			if ((trxTransmissionEnabled || (uiDataGlobal.DTMFContactList.isKeying) || (ev->buttons & BUTTON_PTT))
 					|| ((trxGetMode() == RADIO_MODE_DIGITAL) && (slot_state != DMR_STATE_IDLE))
 					|| (((getAudioAmpStatus() & (AUDIO_AMP_MODE_RF | AUDIO_AMP_MODE_BEEP | AUDIO_AMP_MODE_PROMPT)) != 0) || trxCarrierDetected()))
 			{
 				if ((ev->buttons & BUTTON_PTT) && (trxTransmissionEnabled == false)) // RX Only or Out of Band
 				{
-					GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+					LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 				}
 			}
 			else
 			{
-				GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+				LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 			}
 		}
 
@@ -1923,16 +2161,16 @@ void heartBeatActivityForGD77S(uiEvent_t *ev)
 	}
 
 	// Nothing is happening, blink
-	if (((trxTransmissionEnabled == false) && ((ev->buttons & BUTTON_PTT) == 0))
+	if (((trxTransmissionEnabled == false) && (uiDataGlobal.DTMFContactList.isKeying == false) && ((ev->buttons & BUTTON_PTT) == 0))
 			&& ((ev->hasEvent == false) && ((getAudioAmpStatus() & (AUDIO_AMP_MODE_RF | AUDIO_AMP_MODE_BEEP | AUDIO_AMP_MODE_PROMPT)) == 0) && (trxCarrierDetected() == false)))
 	{
 		// Blink both LEDs to have Orange color
-		if ((ev->time - mTime) > (scanActive ? periodsScan[beatRoll] : periods[beatRoll]))
+		if ((ev->time - mTime) > (uiDataGlobal.Scan.active ? periodsScan[beatRoll] : periods[beatRoll]))
 		{
 			mTime = ev->time;
-			beatRoll = (beatRoll + 1) % (scanActive ? (sizeof(periodsScan) / sizeof(periodsScan[0])) : (sizeof(periods) / sizeof(periods[0])));
-			GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, (beatRoll % 2));
-			GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, (beatRoll % 2));
+			beatRoll = (beatRoll + 1) % (uiDataGlobal.Scan.active ? (sizeof(periodsScan) / sizeof(periodsScan[0])) : (sizeof(periods) / sizeof(periods[0])));
+			LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, (beatRoll % 2));
+			LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, (beatRoll % 2));
 		}
 	}
 	else
@@ -1946,21 +2184,21 @@ void heartBeatActivityForGD77S(uiEvent_t *ev)
 
 static uint16_t getCurrentChannelInCurrentZoneForGD77S(void)
 {
-	return (currentZone.NOT_IN_MEMORY_isAllChannelsZone ? nonVolatileSettings.currentChannelIndexInAllZone : nonVolatileSettings.currentChannelIndexInZone + 1);
+	return (CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone) ? nonVolatileSettings.currentChannelIndexInAllZone : nonVolatileSettings.currentChannelIndexInZone + 1);
 }
 
 static void checkAndUpdateSelectedChannelForGD77S(uint16_t chanNum, bool forceSpeech)
 {
 	bool updateDisplay = false;
 
-	if(currentZone.NOT_IN_MEMORY_isAllChannelsZone)
+	if(CODEPLUG_ZONE_IS_ALLCHANNELS(currentZone))
 	{
 		GD77SParameters.channelOutOfBounds = false;
-		if (codeplugChannelIndexIsValid(chanNum))
+		if (codeplugAllChannelsIndexIsInUse(chanNum))
 		{
 			if (chanNum != nonVolatileSettings.currentChannelIndexInAllZone)
 			{
-				settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, chanNum);
+				settingsSet(nonVolatileSettings.currentChannelIndexInAllZone, (int16_t) chanNum);
 				loadChannelData(false, false);
 				updateDisplay = true;
 			}
@@ -1979,12 +2217,12 @@ static void checkAndUpdateSelectedChannelForGD77S(uint16_t chanNum, bool forceSp
 	}
 	else
 	{
-		if ((chanNum - 1) < currentZone.NOT_IN_MEMORY_numChannelsInZone)
+		if ((chanNum - 1) < currentZone.NOT_IN_CODEPLUGDATA_numChannelsInZone)
 		{
 			GD77SParameters.channelOutOfBounds = false;
 			if ((chanNum - 1) != nonVolatileSettings.currentChannelIndexInZone)
 			{
-				settingsSet(nonVolatileSettings.currentChannelIndexInZone, (chanNum - 1));
+				settingsSet(nonVolatileSettings.currentChannelIndexInZone, (int16_t) (chanNum - 1));
 				loadChannelData(false, false);
 				updateDisplay = true;
 			}
@@ -2026,14 +2264,14 @@ static void checkAndUpdateSelectedChannelForGD77S(uint16_t chanNum, bool forceSp
 			voicePromptsAppendPrompt(PROMPT_CHANNEL);
 			voicePromptsAppendInteger(chanNum);
 			voicePromptsAppendPrompt(PROMPT_SILENCE);
-			codeplugUtilConvertBufToString(channelScreenChannelData.name, buf, 16);
+			codeplugUtilConvertBufToString(currentChannelData->name, buf, 16);
 			voicePromptsAppendString(buf);
 			voicePromptsPlay();
 		}
 
 		if (!forceSpeech)
 		{
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			uiChannelModeUpdateScreen(0);
 		}
 	}
@@ -2043,17 +2281,39 @@ static void buildSpeechChannelDetailsForGD77S()
 {
 	char buf[17];
 
-	announceFrequency();
-
-	codeplugUtilConvertBufToString(channelScreenChannelData.name, buf, 16);
+	codeplugUtilConvertBufToString(currentChannelData->name, buf, 16);
 	voicePromptsAppendString(buf);
 
-	announceContactNameTgOrPc();
+	voicePromptsAppendPrompt(PROMPT_SILENCE);
+	announceFrequency();
+	voicePromptsAppendPrompt(PROMPT_SILENCE);
 
 	if (trxGetMode() == RADIO_MODE_DIGITAL)
 	{
+		announceContactNameTgOrPc(voicePromptsIsPlaying());
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
 		announceTS();
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
 		announceCC();
+	}
+	else
+	{
+		if (currentChannelData->rxTone != CODEPLUG_CSS_NONE)
+		{
+			bool isCTCSS = codeplugChannelToneIsCTCSS(currentChannelData->rxTone);
+
+			buildCSSCodeVoicePrompts(currentChannelData->rxTone,
+					(isCTCSS ? CSS_CTCSS : ((currentChannelData->rxTone & CODEPLUG_DCS_INVERTED_MASK) ? CSS_DCS_INVERTED : CSS_DCS)), DIRECTION_RECEIVE, true);
+			voicePromptsAppendPrompt(PROMPT_SILENCE);
+		}
+
+		if (currentChannelData->txTone != CODEPLUG_CSS_NONE)
+		{
+			bool isCTCSS = codeplugChannelToneIsCTCSS(currentChannelData->txTone);
+
+			buildCSSCodeVoicePrompts(currentChannelData->txTone,
+					(isCTCSS ? CSS_CTCSS : ((currentChannelData->txTone & CODEPLUG_DCS_INVERTED_MASK) ? CSS_DCS_INVERTED : CSS_DCS)), DIRECTION_TRANSMIT, true);
+		}
 	}
 }
 
@@ -2061,21 +2321,30 @@ static void buildSpeechUiModeForGD77S(GD77S_UIMODES_t uiMode)
 {
 	char buf[17];
 
+	if (voicePromptsIsPlaying())
+	{
+		voicePromptsTerminate();
+	}
+
 	switch (uiMode)
 	{
-		case GD77S_UIMODE_CHANNEL: // Channel
-			codeplugUtilConvertBufToString(channelScreenChannelData.name, buf, 16);
+		case GD77S_UIMODE_TG_OR_SQUELCH: // Channel
+			codeplugUtilConvertBufToString(currentChannelData->name, buf, 16);
 			voicePromptsAppendString(buf);
 
 			if (trxGetMode() == RADIO_MODE_DIGITAL)
 			{
 				announceTS();
 			}
+			else
+			{
+				announceSquelchLevel(voicePromptsIsPlaying());
+			}
 			break;
 
 		case GD77S_UIMODE_SCAN: // Scan
 			voicePromptsAppendLanguageString(&currentLanguage->scan);
-			voicePromptsAppendLanguageString(scanActive ? &currentLanguage->on : &currentLanguage->off);
+			voicePromptsAppendLanguageString(uiDataGlobal.Scan.active ? &currentLanguage->on : &currentLanguage->off);
 			break;
 
 		case GD77S_UIMODE_TS: // Timeslot
@@ -2119,14 +2388,27 @@ static void buildSpeechUiModeForGD77S(GD77S_UIMODES_t uiMode)
 			}
 			break;
 
+		case GD77S_UIMODE_DTMF_CONTACTS:
+			if (GD77SParameters.dtmfListCount > 0)
+			{
+				struct_codeplugDTMFContact_t dtmfContact;
+
+				codeplugDTMFContactGetDataForNumber(GD77SParameters.dtmfListSelected + 1, &dtmfContact);
+				codeplugUtilConvertBufToString(dtmfContact.name, buf, 16);
+				voicePromptsAppendString(buf);
+			}
+			else
+			{
+				voicePromptsAppendLanguageString(&currentLanguage->empty_list);
+			}
+			break;
+
 		case GD77S_UIMODE_ZONE: // Zone
 			announceZoneName(voicePromptsIsPlaying());
 			break;
 
-
 		case GD77S_UIMODE_POWER: // Power
-			voicePromptsAppendPrompt(PROMPT_POWER);
-			announcePowerLevel();
+			announcePowerLevel(voicePromptsIsPlaying());
 			break;
 
 		case GD77S_UIMODE_MAX:
@@ -2138,12 +2420,17 @@ static void handleEventForGD77S(uiEvent_t *ev)
 {
 	if (ev->events & ROTARY_EVENT)
 	{
+		if (dtmfSequenceIsKeying())
+		{
+			dtmfSequenceStop();
+		}
+
 		if (!trxTransmissionEnabled && (ev->rotary > 0))
 		{
-			if (scanActive)
+			if (uiDataGlobal.Scan.active)
 			{
 				uiChannelModeStopScanning();
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 			}
 
@@ -2154,12 +2441,22 @@ static void handleEventForGD77S(uiEvent_t *ev)
 		}
 	}
 
+	if (handleMonitorMode(ev))
+	{
+		return;
+	}
+
 	if (ev->events & BUTTON_EVENT)
 	{
-		if (BUTTONCHECK_DOWN(ev, BUTTON_ORANGE) && scanActive)
+		if (dtmfSequenceIsKeying() && (ev->buttons & (BUTTON_SK1 | BUTTON_SK2 | BUTTON_ORANGE)))
+		{
+			dtmfSequenceStop();
+		}
+
+		if (BUTTONCHECK_SHORTUP(ev, BUTTON_ORANGE) && uiDataGlobal.Scan.active)
 		{
 			uiChannelModeStopScanning();
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			uiChannelModeUpdateScreen(0);
 
 			if (voicePromptsIsPlaying())
@@ -2173,78 +2470,100 @@ static void handleEventForGD77S(uiEvent_t *ev)
 			return;
 		}
 
-		if (BUTTONCHECK_LONGDOWN(ev, BUTTON_ORANGE))
+		if (BUTTONCHECK_LONGDOWN(ev, BUTTON_ORANGE) && (uiDataGlobal.DTMFContactList.isKeying == false))
 		{
 			announceItem(PROMPT_SEQUENCE_BATTERY, PROMPT_THRESHOLD_3);
+			return;
 		}
-		else if (BUTTONCHECK_SHORTUP(ev, BUTTON_ORANGE))
+		else if (BUTTONCHECK_SHORTUP(ev, BUTTON_ORANGE) && (uiDataGlobal.DTMFContactList.isKeying == false))
 		{
+			voicePrompt_t vp = NUM_VOICE_PROMPTS;
+			char * const *vpString = NULL;
+
 			GD77SParameters.uiMode = (GD77S_UIMODES_t) (GD77SParameters.uiMode + 1) % GD77S_UIMODE_MAX;
+
+			//skip over Digital controls if the radio is in Analog mode
+			if (trxGetMode() == RADIO_MODE_ANALOG)
+			{
+				// Analog
+				if ((GD77SParameters.uiMode == GD77S_UIMODE_TS) ||
+					(GD77SParameters.uiMode == GD77S_UIMODE_CC))
+				{
+					GD77SParameters.uiMode = GD77S_UIMODE_FILTER;
+				}
+			}
+			else
+			{
+				// digital
+				if (GD77SParameters.uiMode == GD77S_UIMODE_DTMF_CONTACTS)
+				{
+					GD77SParameters.uiMode = GD77S_UIMODE_ZONE;
+				}
+			}
 
 			switch (GD77SParameters.uiMode)
 			{
-				case GD77S_UIMODE_CHANNEL: // Channel Mode
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_CHANNEL_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+				case GD77S_UIMODE_TG_OR_SQUELCH: // Channel Mode
+					if (trxGetMode() == RADIO_MODE_DIGITAL)
+					{
+						vp = PROMPT_CHANNEL_MODE;
+					}
+					else
+					{
+						vpString = (char * const *)&currentLanguage->squelch;
+					}
 					break;
 
 				case GD77S_UIMODE_SCAN:
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_SCAN_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+					vp = PROMPT_SCAN_MODE;
 					break;
 
 				case GD77S_UIMODE_TS: // Timeslot Mode
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_TIMESLOT_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					//voicePromptsAppendLanguageString(&currentLanguage->timeSlot);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+					vp = PROMPT_TIMESLOT_MODE;
 					break;
 
 				case GD77S_UIMODE_CC: // ColorCode Mode
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_COLORCODE_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+					vp = PROMPT_COLORCODE_MODE;
 					break;
 
 				case GD77S_UIMODE_FILTER: // DMR/Analog Filter
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_FILTER_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+					vp = PROMPT_FILTER_MODE;
+					break;
+
+				case GD77S_UIMODE_DTMF_CONTACTS:
+					vpString = (char * const *)&currentLanguage->dtmf_contact_list;
 					break;
 
 				case GD77S_UIMODE_ZONE: // Zone Mode
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_ZONE_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+					vp = PROMPT_ZONE_MODE;
 					break;
 
 				case GD77S_UIMODE_POWER: // Power Mode
-					voicePromptsInit();
-					voicePromptsAppendPrompt(PROMPT_POWER_MODE);
-					voicePromptsAppendPrompt(PROMPT_SILENCE);
-					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
-					voicePromptsPlay();
+					vp = PROMPT_POWER_MODE;
 					break;
 
 				case GD77S_UIMODE_MAX:
 					break;
 			}
+
+			if ((vp != NUM_VOICE_PROMPTS) || (vpString != NULL))
+			{
+				voicePromptsInit();
+				if (vpString)
+				{
+					voicePromptsAppendLanguageString((const char * const *)vpString);
+					voicePromptsAppendPrompt(PROMPT_MODE);
+				}
+				else
+				{
+					voicePromptsAppendPrompt(vp);
+				}
+				voicePromptsAppendPrompt(PROMPT_SILENCE);
+				buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
+				voicePromptsPlay();
+			}
 		}
-		else if (BUTTONCHECK_LONGDOWN(ev, BUTTON_SK1))
+		else if (BUTTONCHECK_LONGDOWN(ev, BUTTON_SK1) && (monitorModeData.isEnabled == false) && (uiDataGlobal.DTMFContactList.isKeying == false))
 		{
 			if (GD77SParameters.channelOutOfBounds == false)
 			{
@@ -2253,13 +2572,14 @@ static void handleEventForGD77S(uiEvent_t *ev)
 				voicePromptsPlay();
 			}
 		}
-		else if (BUTTONCHECK_SHORTUP(ev, BUTTON_SK1))
+		else if (BUTTONCHECK_SHORTUP(ev, BUTTON_SK1) && (uiDataGlobal.DTMFContactList.isKeying == false))
 		{
 			switch (GD77SParameters.uiMode)
 			{
-				case GD77S_UIMODE_CHANNEL: // Next in TGList
+				case GD77S_UIMODE_TG_OR_SQUELCH:
 					if (trxGetMode() == RADIO_MODE_DIGITAL)
 					{
+						// Next in TGList
 						if (nonVolatileSettings.overrideTG == 0)
 						{
 							settingsIncrement(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 1);
@@ -2269,29 +2589,43 @@ static void handleEventForGD77S(uiEvent_t *ev)
 							}
 						}
 						settingsSet(nonVolatileSettings.overrideTG, 0);// setting the override TG to 0 indicates the TG is not overridden
-						menuClearPrivateCall();
-						uiChannelUpdateTrxID();
-						menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+						menuPrivateCallClear();
+						updateTrxID();
+						uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 						uiChannelModeUpdateScreen(0);
 						announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC, PROMPT_THRESHOLD_3);
+					}
+					else
+					{
+						if(currentChannelData->sql == 0)			//If we were using default squelch level
+						{
+							currentChannelData->sql = nonVolatileSettings.squelchDefaults[trxCurrentBand[TRX_RX_FREQ_BAND]];			//start the adjustment from that point.
+						}
+
+						if (currentChannelData->sql < CODEPLUG_MAX_VARIABLE_SQUELCH)
+						{
+							currentChannelData->sql++;
+						}
+
+						announceItem(PROMPT_SQUENCE_SQUELCH, PROMPT_THRESHOLD_3);
 					}
 					break;
 
 				case GD77S_UIMODE_SCAN:
-					if (scanActive)
+					if (uiDataGlobal.Scan.active)
 					{
 						uiChannelModeStopScanning();
-						menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+						uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 						uiChannelModeUpdateScreen(0);
 					}
 					else
 					{
-						startScan(false);
+						scanStart(false);
 					}
 
 					voicePromptsInit();
 					voicePromptsAppendLanguageString(&currentLanguage->scan);
-					voicePromptsAppendLanguageString(scanActive ? &currentLanguage->on : &currentLanguage->off);
+					voicePromptsAppendLanguageString(uiDataGlobal.Scan.active ? &currentLanguage->on : &currentLanguage->off);
 					voicePromptsPlay();
 					break;
 
@@ -2333,6 +2667,7 @@ static void handleEventForGD77S(uiEvent_t *ev)
 						if (nonVolatileSettings.analogFilterLevel < NUM_ANALOG_FILTER_LEVELS - 1)
 						{
 							settingsIncrement(nonVolatileSettings.analogFilterLevel, 1);
+							trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 						}
 					}
 
@@ -2341,14 +2676,26 @@ static void handleEventForGD77S(uiEvent_t *ev)
 					voicePromptsPlay();
 					break;
 
+				case GD77S_UIMODE_DTMF_CONTACTS:
+					// select next DTMF contact and spell it
+					if (GD77SParameters.dtmfListCount > 0)
+					{
+						GD77SParameters.dtmfListSelected = (GD77SParameters.dtmfListSelected + 1) % GD77SParameters.dtmfListCount;
+					}
+					voicePromptsInit();
+					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
+					voicePromptsPlay();
+
+					break;
+
 				case GD77S_UIMODE_ZONE: // Zones
 					// No "All Channels" on GD77S
-					menuSystemMenuIncrement((int32_t *)&nonVolatileSettings.currentZone, (codeplugZonesGetCount() - 1));
+					nonVolatileSettings.currentZone = (nonVolatileSettings.currentZone + 1) % (codeplugZonesGetCount() - 1);
 
 					settingsSet(nonVolatileSettings.overrideTG, 0); // remove any TG override
-					tsSetOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
-					settingsSet(nonVolatileSettings.currentChannelIndexInZone, -2); // Will be updated when reloading the UiChannelMode screen
-					channelScreenChannelData.rxFreq = 0x00; // Flag to the Channel screen that the channel data is now invalid and needs to be reloaded
+					tsSetManualOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
+					settingsSet(nonVolatileSettings.currentChannelIndexInZone, (int16_t) -2); // Will be updated when reloading the UiChannelMode screen
+					currentChannelData->rxFreq = 0x00; // Flag to the Channel screen that the channel data is now invalid and needs to be reloaded
 
 					menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
 					GD77SParameters.uiMode = GD77S_UIMODE_ZONE;
@@ -2357,23 +2704,19 @@ static void handleEventForGD77S(uiEvent_t *ev)
 					break;
 
 				case GD77S_UIMODE_POWER: // Power
-					if (nonVolatileSettings.txPowerLevel < MAX_POWER_SETTING_NUM)
-					{
-						settingsIncrement(nonVolatileSettings.txPowerLevel, 1);
-					}
-					announceItem(PROMPT_SEQUENCE_POWER, PROMPT_THRESHOLD_3);
+					increasePowerLevel(true);// true = Allow 5W++
 					break;
 
 				case GD77S_UIMODE_MAX:
 					break;
 			}
 		}
-		else if (BUTTONCHECK_LONGDOWN(ev, BUTTON_SK2))
+		else if (BUTTONCHECK_LONGDOWN(ev, BUTTON_SK2) && (monitorModeData.isEnabled == false) && (uiDataGlobal.DTMFContactList.isKeying == false))
 		{
 			uint32_t tg = (LinkHead->talkGroupOrPcId & 0xFFFFFF);
 
 			// If Blue button is long pressed during reception it sets the Tx TG to the incoming TG
-			if (isDisplayingQSOData && BUTTONCHECK_DOWN(ev, BUTTON_SK2) && (trxGetMode() == RADIO_MODE_DIGITAL) &&
+			if (uiDataGlobal.isDisplayingQSOData && BUTTONCHECK_DOWN(ev, BUTTON_SK2) && (trxGetMode() == RADIO_MODE_DIGITAL) &&
 					((trxTalkGroupOrPcId != tg) ||
 							((dmrMonitorCapturedTS != -1) && (dmrMonitorCapturedTS != trxGetDMRTimeSlot())) ||
 							(trxGetDMRColourCode() != currentChannelData->rxColor)))
@@ -2388,13 +2731,13 @@ static void handleEventForGD77S(uiEvent_t *ev)
 				if ((dmrMonitorCapturedTS != -1) && (dmrMonitorCapturedTS != trxGetDMRTimeSlot()))
 				{
 					trxSetDMRTimeSlot(dmrMonitorCapturedTS);
-					tsSetOverride(CHANNEL_CHANNEL, (dmrMonitorCapturedTS + 1));
+					tsSetManualOverride(CHANNEL_CHANNEL, (dmrMonitorCapturedTS + 1));
 				}
 				if (trxTalkGroupOrPcId != tg)
 				{
 					if ((tg >> 24) & PC_CALL_FLAG)
 					{
-						menuAcceptPrivateCall(tg & 0xffffff);
+						acceptPrivateCall(tg & 0xffffff, -1);
 					}
 					else
 					{
@@ -2405,16 +2748,16 @@ static void handleEventForGD77S(uiEvent_t *ev)
 
 				currentChannelData->rxColor = trxGetDMRColourCode();// Set the CC to the current CC, which may have been determined by the CC finding algorithm in C6000.c
 
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				uiChannelModeUpdateScreen(0);
 				return;
 			}
 		}
-		else if (BUTTONCHECK_SHORTUP(ev, BUTTON_SK2))
+		else if (BUTTONCHECK_SHORTUP(ev, BUTTON_SK2) && (uiDataGlobal.DTMFContactList.isKeying == false))
 		{
 			switch (GD77SParameters.uiMode)
 			{
-				case GD77S_UIMODE_CHANNEL: // Previous in TGList
+				case GD77S_UIMODE_TG_OR_SQUELCH: // Previous in TGList
 					if (trxGetMode() == RADIO_MODE_DIGITAL)
 					{
 						// To Do change TG in on same channel freq
@@ -2423,47 +2766,55 @@ static void handleEventForGD77S(uiEvent_t *ev)
 							settingsDecrement(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 1);
 							if (nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE] < 0)
 							{
-								settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1));
+								settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], (int16_t) (currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup - 1));
 							}
 						}
 						settingsSet(nonVolatileSettings.overrideTG, 0);// setting the override TG to 0 indicates the TG is not overridden
-						menuClearPrivateCall();
-						uiChannelUpdateTrxID();
-						menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+						menuPrivateCallClear();
+						updateTrxID();
+						uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 						uiChannelModeUpdateScreen(0);
 						announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC, PROMPT_THRESHOLD_3);
+					}
+					else
+					{
+						if(currentChannelData->sql == 0)			//If we were using default squelch level
+						{
+							currentChannelData->sql = nonVolatileSettings.squelchDefaults[trxCurrentBand[TRX_RX_FREQ_BAND]];			//start the adjustment from that point.
+						}
+
+						if (currentChannelData->sql > CODEPLUG_MIN_VARIABLE_SQUELCH)
+						{
+							currentChannelData->sql--;
+						}
+
+						announceItem(PROMPT_SQUENCE_SQUELCH, PROMPT_THRESHOLD_3);
 					}
 					break;
 
 				case GD77S_UIMODE_SCAN:
-					if (scanActive)
+					if (uiDataGlobal.Scan.active)
 					{
 						// if we are scanning and down key is pressed then enter current channel into nuisance delete array.
-						if(scanState == SCAN_PAUSED)
+						if(uiDataGlobal.Scan.state == SCAN_PAUSED)
 						{
-							// There is no more channel available in the Zone, just stop scanning
-							if (nuisanceDeleteIndex == (currentZone.NOT_IN_MEMORY_numChannelsInZone - 1))
+							// There is two channels available in the Zone, just stop scanning
+							if (uiDataGlobal.Scan.nuisanceDeleteIndex == (uiDataGlobal.Scan.availableChannelsCount - 2))
 							{
-								uiChannelModeStopScanning();
-								menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-								uiChannelModeUpdateScreen(0);
-								return;
+								uiDataGlobal.Scan.lastIteration = true;
 							}
 
-							nuisanceDelete[nuisanceDeleteIndex++] = settingsCurrentChannelNumber;
-							if (nuisanceDeleteIndex > (MAX_ZONE_SCAN_NUISANCE_CHANNELS - 1))
-							{
-								nuisanceDeleteIndex = 0; //rolling list of last MAX_NUISANCE_CHANNELS deletes.
-							}
-							scanTimer = SCAN_SKIP_CHANNEL_INTERVAL;	//force scan to continue;
-							scanState = SCAN_SCANNING;
+							uiDataGlobal.Scan.nuisanceDelete[uiDataGlobal.Scan.nuisanceDeleteIndex] = uiDataGlobal.currentSelectedChannelNumber;
+							uiDataGlobal.Scan.nuisanceDeleteIndex = (uiDataGlobal.Scan.nuisanceDeleteIndex + 1) % MAX_ZONE_SCAN_NUISANCE_CHANNELS;
+							uiDataGlobal.Scan.timer = SCAN_SKIP_CHANNEL_INTERVAL;	//force scan to continue;
+							uiDataGlobal.Scan.state = SCAN_SCANNING;
 							return;
 						}
 
 						// Left key reverses the scan direction
-						if (scanState == SCAN_SCANNING)
+						if (uiDataGlobal.Scan.state == SCAN_SCANNING)
 						{
-							scanDirection *= -1;
+							uiDataGlobal.Scan.direction *= -1;
 							return;
 						}
 					}
@@ -2507,6 +2858,7 @@ static void handleEventForGD77S(uiEvent_t *ev)
 						if (nonVolatileSettings.analogFilterLevel > ANALOG_FILTER_NONE)
 						{
 							settingsDecrement(nonVolatileSettings.analogFilterLevel, 1);
+							trxSetAnalogFilterLevel(nonVolatileSettings.analogFilterLevel);
 						}
 					}
 
@@ -2515,14 +2867,25 @@ static void handleEventForGD77S(uiEvent_t *ev)
 					voicePromptsPlay();
 					break;
 
+				case GD77S_UIMODE_DTMF_CONTACTS:
+					// select previous DTMF contact and spell it
+					if (GD77SParameters.dtmfListCount > 0)
+					{
+						GD77SParameters.dtmfListSelected = (GD77SParameters.dtmfListSelected + GD77SParameters.dtmfListCount - 1) % GD77SParameters.dtmfListCount;
+					}
+					voicePromptsInit();
+					buildSpeechUiModeForGD77S(GD77SParameters.uiMode);
+					voicePromptsPlay();
+					break;
+
 				case GD77S_UIMODE_ZONE: // Zones
 					// No "All Channels" on GD77S
-					menuSystemMenuDecrement((int32_t *)&nonVolatileSettings.currentZone, (codeplugZonesGetCount() - 1));
+					nonVolatileSettings.currentZone = (nonVolatileSettings.currentZone + (codeplugZonesGetCount() - 1) - 1) % (codeplugZonesGetCount() - 1);
 
 					settingsSet(nonVolatileSettings.overrideTG, 0); // remove any TG override
-					tsSetOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
-					settingsSet(nonVolatileSettings.currentChannelIndexInZone, -2); // Will be updated when reloading the UiChannelMode screen
-					channelScreenChannelData.rxFreq = 0x00; // Flag to the Channel screeen that the channel data is now invalid and needs to be reloaded
+					tsSetManualOverride(CHANNEL_CHANNEL, TS_NO_OVERRIDE);
+					settingsSet(nonVolatileSettings.currentChannelIndexInZone, (int16_t) -2); // Will be updated when reloading the UiChannelMode screen
+					currentChannelData->rxFreq = 0x00; // Flag to the Channel screeen that the channel data is now invalid and needs to be reloaded
 
 					menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
 					GD77SParameters.uiMode = GD77S_UIMODE_ZONE;
@@ -2531,11 +2894,7 @@ static void handleEventForGD77S(uiEvent_t *ev)
 					break;
 
 				case GD77S_UIMODE_POWER: // Power
-					if (nonVolatileSettings.txPowerLevel > 0)
-					{
-						settingsDecrement(nonVolatileSettings.txPowerLevel, 1);
-					}
-					announceItem(PROMPT_SEQUENCE_POWER, PROMPT_THRESHOLD_3);
+					decreasePowerLevel();
 					break;
 
 				case GD77S_UIMODE_MAX:

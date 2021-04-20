@@ -24,10 +24,10 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef __UC1701_CHARSET_H__
-#define __UC1701_CHARSET_H__
+#ifndef _OPENGD77_UC1701_CHARSET_H_
+#define _OPENGD77_UC1701_CHARSET_H_
 
-#ifdef BUILD_FONT_TOOL
+#if defined(BUILD_FONT_TOOL) || defined(CHAR_CONSTANTS_ONLY)
 
 #define CHARS_PER_FONT 224
 
@@ -39,42 +39,43 @@
 //                                              DEC         OCT
 //                                            +----+-----+------+
 //                                            |    |     |      |
-#define FONT_CHAR_CAPITAL_S_WITH_CARON 		138 // Š   
-#define FONT_CHAR_CAPITAL_Z_WITH_CARON 		142 // Ž   
-#define FONT_CHAR_SMALL_S_WITH_CARON		154 // š   
-#define FONT_CHAR_SMALL_Z_WITH_CARON 		158 // ž   
-#define FONT_CHAR_CAPITAL_Y_WITH_DIAERESIS	159 // Ÿ   
+#define FONT_CHAR_CAPITAL_S_WITH_CARON 		138 // Š   \212
+#define FONT_CHAR_CAPITAL_Z_WITH_CARON 		142 // Ž   \232
+#define FONT_CHAR_SMALL_S_WITH_CARON		154 // š   \216
+#define FONT_CHAR_SMALL_Z_WITH_CARON 		158 // ž   \236
+#define FONT_CHAR_CAPITAL_Y_WITH_DIAERESIS	159 // Ÿ   \237
+							       
+#define FONT_CHAR_CAPITAL_C_WITH_CARON 		127 // Č   \177
+#define FONT_CHAR_SMALL_C_WITH_CARON 		128 // č   \200
+#define FONT_CHAR_CAPITAL_C_WITH_ACUTE  	129 // Ć   \201
+#define FONT_CHAR_SMALL_C_WITH_ACUTE		130 // ć   \202
+#define FONT_CHAR_CAPITAL_A_WITH_OGONEK  	131 // Ą   \203
+#define FONT_CHAR_SMALL_A_WITH_OGONEK 		132 // ą   \204
+#define FONT_CHAR_CAPITAL_E_WITH_OGONEK 	133 // Ę   \205
+#define FONT_CHAR_SMALL_E_WITH_OGONEK 		134 // ę   \206
+#define FONT_CHAR_CAPITAL_L_WITH_STROKE 	135 // Ł   \207
+#define FONT_CHAR_SMALL_L_WITH_STROKE 		136 // ł   \210
+#define FONT_CHAR_CAPITAL_N_WITH_ACUTE 		137 // Ń   \211
+#define FONT_CHAR_SMALL_N_WITH_ACUTE  		139 // ń   \213
+#define FONT_CHAR_CAPITAL_S_WITH_ACUTE 		140 // Ś   \214
+#define FONT_CHAR_SMALL_S_WITH_ACUTE 		141 // ś   \215
+#define FONT_CHAR_CAPITAL_Z_WITH_ACUTE 		143 // Ź   \217
+#define FONT_CHAR_SMALL_Z_WITH_ACUTE		144 // ź   \220
+#define FONT_CHAR_CAPITAL_Z_WITH_DOT_ABOVE 	145 // Ż   \221
+#define FONT_CHAR_SMALL_Z_WITH_DOT_ABOVE  	146 // ż   \222
+#define FONT_CHAR_SMALL_I_DOTLESS  		147 // ı   \223
+#define FONT_CHAR_CAPITAL_I_WITH_DOT  		148 // İ   \224
+#define FONT_CHAR_S_CAPITAL_WITH_CEDILLA	149 // Ş   \225
+#define FONT_CHAR_S_SMALL_WITH_CEDILLA  	150 // ş   \226
+#define FONT_CHAR_G_CAPITAL_WITH_BREVE		151 // Ğ   \227
+#define FONT_CHAR_G_SMALL_WITH_BREVE		152 // ğ   \230
+#define FONT_CHAR_CAPITAL_R_WITH_CARON 		153 // Ř   \231
+#define FONT_CHAR_SMALL_R_WITH_CARON 		155 // ř   \233
+#define FONT_CHAR_CAPITAL_E_WITH_CARON 		156 // Ě   \234
+#define FONT_CHAR_SMALL_E_WITH_CARON 		157 // ě   \235
+#define FONT_CHAR_CAPITAL_U_WITH_RING_ABOVE     160 // Ů   \240
+#define FONT_CHAR_SMALL_U_WITH_RING_ABOVE       161 // ů   \241
 
-#define FONT_CHAR_CAPITAL_C_WITH_CARON 		127 // Č   
-#define FONT_CHAR_SMALL_C_WITH_CARON 		128 // č   
-#define FONT_CHAR_CAPITAL_C_WITH_ACUTE  	129 // Ć   
-#define FONT_CHAR_SMALL_C_WITH_ACUTE		130 // ć   
-#define FONT_CHAR_CAPITAL_A_WITH_OGONEK  	131 // Ą   
-#define FONT_CHAR_SMALL_A_WITH_OGONEK 		132 // ą   
-#define FONT_CHAR_CAPITAL_E_WITH_OGONEK 	133 // Ę   
-#define FONT_CHAR_SMALL_E_WITH_OGONEK 		134 // ę   
-#define FONT_CHAR_CAPITAL_L_WITH_STROKE 	135 // Ł   
-#define FONT_CHAR_SMALL_L_WITH_STROKE 		136 // ł   
-#define FONT_CHAR_CAPITAL_N_WITH_ACUTE 		137 // Ń   
-#define FONT_CHAR_SMALL_N_WITH_ACUTE  		139 // ń   
-#define FONT_CHAR_CAPITAL_S_WITH_ACUTE 		140 // Ś   
-#define FONT_CHAR_SMALL_S_WITH_ACUTE 		141 // ś   
-#define FONT_CHAR_CAPITAL_Z_WITH_ACUTE 		143 // Ź   
-#define FONT_CHAR_SMALL_Z_WITH_ACUTE		144 // ź   
-#define FONT_CHAR_CAPITAL_Z_WITH_DOT_ABOVE 	145 // Ż   
-#define FONT_CHAR_SMALL_Z_WITH_DOT_ABOVE  	146 // ż   
-#define FONT_CHAR_SMALL_I_DOTLESS  		147 // ı   
-#define FONT_CHAR_CAPITAL_I_WITH_DOT  		148 // İ   
-#define FONT_CHAR_S_CAPITAL_WITH_CEDILLA	149 // Ş   
-#define FONT_CHAR_S_SMALL_WITH_CEDILLA  	150 // ş   
-#define FONT_CHAR_G_CAPITAL_WITH_BREVE		151 // Ğ   
-#define FONT_CHAR_G_SMALL_WITH_BREVE		152 // ğ   
-#define FONT_CHAR_CAPITAL_R_WITH_CARON 		153 // Ř   
-#define FONT_CHAR_SMALL_R_WITH_CARON 		155 // ř   
-#define FONT_CHAR_CAPITAL_E_WITH_CARON 		156 // Ě   
-#define FONT_CHAR_SMALL_E_WITH_CARON 		157 // ě   
-#define FONT_CHAR_CAPITAL_U_WITH_RING_ABOVE     160 // Ů    
-#define FONT_CHAR_SMALL_U_WITH_RING_ABOVE       161 // ů   ¡
 
 // This is the list of excluded characters offsets
 uint8_t freePositions[] = {
@@ -88,48 +89,50 @@ struct
      uint32_t   offset;
      uint8_t    offsetName[48];
      uint8_t    character[5];
-     uint8_t    octal[2];
+     uint8_t    octal;
 } char_hand_assigned[] = {
      // The 5 following chars exists in windows-1252 charmap, but we need this for
      // font array creation (the character in comments)
-     {  FONT_CHAR_CAPITAL_S_WITH_CARON      , "FONT_CHAR_CAPITAL_S_WITH_CARON"     , { "Š" } , "" }, // Š
-     {  FONT_CHAR_SMALL_S_WITH_CARON        , "FONT_CHAR_SMALL_S_WITH_CARON"       , { "š" } , "" }, // š
-     {  FONT_CHAR_CAPITAL_Z_WITH_CARON      , "FONT_CHAR_CAPITAL_Z_WITH_CARON"     , { "Ž" } , "" }, // Ž
-     {  FONT_CHAR_SMALL_Z_WITH_CARON        , "FONT_CHAR_SMALL_Z_WITH_CARON"       , { "ž" } , "" }, // ž
-     {  FONT_CHAR_CAPITAL_Y_WITH_DIAERESIS  , "FONT_CHAR_CAPITAL_Y_WITH_DIAERESIS" , { "Ÿ" } , "" }, // Ÿ
-     // ---
-     {  FONT_CHAR_CAPITAL_C_WITH_CARON      , "FONT_CHAR_CAPITAL_C_WITH_CARON"     , { "Č" } , "" }, // Č
-     {  FONT_CHAR_SMALL_C_WITH_CARON        , "FONT_CHAR_SMALL_C_WITH_CARON"       , { "č" } , "" }, // č 
-     {  FONT_CHAR_CAPITAL_C_WITH_ACUTE      , "FONT_CHAR_CAPITAL_C_WITH_ACUTE"     , { "Ć" } , "" }, // Ć
-     {  FONT_CHAR_SMALL_C_WITH_ACUTE        , "FONT_CHAR_SMALL_C_WITH_ACUTE"       , { "ć" } , "" }, // ć
-     {  FONT_CHAR_CAPITAL_A_WITH_OGONEK     , "FONT_CHAR_CAPITAL_A_WITH_OGONEK"    , { "Ą" } , "" }, // Ą
-     {  FONT_CHAR_SMALL_A_WITH_OGONEK       , "FONT_CHAR_SMALL_A_WITH_OGONEK"      , { "ą" } , "" }, // ą
-     {  FONT_CHAR_CAPITAL_E_WITH_OGONEK     , "FONT_CHAR_CAPITAL_E_WITH_OGONEK"    , { "Ę" } , "" }, // Ę
-     {  FONT_CHAR_SMALL_E_WITH_OGONEK       , "FONT_CHAR_SMALL_E_WITH_OGONEK"      , { "ę" } , "" }, // ę
-     {  FONT_CHAR_CAPITAL_L_WITH_STROKE     , "FONT_CHAR_CAPITAL_L_WITH_STROKE"    , { "Ł" } , "" }, // Ł
-     {  FONT_CHAR_SMALL_L_WITH_STROKE       , "FONT_CHAR_SMALL_L_WITH_STROKE"      , { "ł" } , "" }, // ł
-     {  FONT_CHAR_CAPITAL_N_WITH_ACUTE      , "FONT_CHAR_CAPITAL_N_WITH_ACUTE"     , { "Ń" } , "" }, // Ń
-     {  FONT_CHAR_SMALL_N_WITH_ACUTE        , "FONT_CHAR_SMALL_N_WITH_ACUTE"       , { "ń" } , "" }, // ń
-     {  FONT_CHAR_CAPITAL_S_WITH_ACUTE      , "FONT_CHAR_CAPITAL_S_WITH_ACUTE"     , { "Ś" } , "" }, // Ś
-     {  FONT_CHAR_SMALL_S_WITH_ACUTE        , "FONT_CHAR_SMALL_S_WITH_ACUTE"       , { "ś" } , "" }, // ś
-     {  FONT_CHAR_CAPITAL_Z_WITH_ACUTE      , "FONT_CHAR_CAPITAL_Z_WITH_ACUTE"     , { "Ź" } , "" }, // Ź
-     {  FONT_CHAR_SMALL_Z_WITH_ACUTE        , "FONT_CHAR_SMALL_Z_WITH_ACUTE"       , { "ź" } , "" }, // ź
-     {  FONT_CHAR_CAPITAL_Z_WITH_DOT_ABOVE  , "FONT_CHAR_CAPITAL_Z_WITH_DOT_ABOVE" , { "Ż" } , "" }, // Ż
-     {  FONT_CHAR_SMALL_Z_WITH_DOT_ABOVE    , "FONT_CHAR_SMALL_Z_WITH_DOT_ABOVE"   , { "ż" } , "" }, // ż
-     {  FONT_CHAR_SMALL_I_DOTLESS           , "FONT_CHAR_SMALL_I_DOTLESS"          , { "ı" } , "" }, // ı
-     {  FONT_CHAR_CAPITAL_I_WITH_DOT        , "FONT_CHAR_CAPITAL_I_WITH_DOT"       , { "İ" } , "" }, // İ
-     {  FONT_CHAR_S_CAPITAL_WITH_CEDILLA    , "FONT_CHAR_S_CAPITAL_WITH_CEDILLA"   , { "Ş" } , "" }, // Ş
-     {  FONT_CHAR_S_SMALL_WITH_CEDILLA      , "FONT_CHAR_S_SMALL_WITH_CEDILLA"     , { "ş" } , "" }, // ş
-     {  FONT_CHAR_G_CAPITAL_WITH_BREVE      , "FONT_CHAR_G_CAPITAL_WITH_BREVE"     , { "Ğ" } , "" }, // Ğ
-     {  FONT_CHAR_G_SMALL_WITH_BREVE        , "FONT_CHAR_G_SMALL_WITH_BREVE"       , { "ğ" } , "" }, // ğ
-     {  FONT_CHAR_CAPITAL_R_WITH_CARON      , "FONT_CHAR_CAPITAL_R_WITH_CARON"     , { "Ř" } , "" }, // Ř
-     {  FONT_CHAR_SMALL_R_WITH_CARON        , "FONT_CHAR_SMALL_R_WITH_CARON"       , { "ř" } , "" }, // ř
-     {  FONT_CHAR_CAPITAL_E_WITH_CARON      , "FONT_CHAR_CAPITAL_E_WITH_CARON"     , { "Ě" } , "" }, // Ě
-     {  FONT_CHAR_SMALL_E_WITH_CARON        , "FONT_CHAR_SMALL_E_WITH_CARON"       , { "ě" } , "" }, // ě
-     {  FONT_CHAR_CAPITAL_U_WITH_RING_ABOVE , "FONT_CHAR_CAPITAL_U_WITH_RING_ABOVE", { "Ů" } , " "    }, // Ů
-     {  FONT_CHAR_SMALL_U_WITH_RING_ABOVE   , "FONT_CHAR_SMALL_U_WITH_RING_ABOVE"  , { "ů" } , "¡"    }  // ů
+     {  FONT_CHAR_CAPITAL_S_WITH_CARON      , "FONT_CHAR_CAPITAL_S_WITH_CARON"     , { "Š" } , '\212' }, // Š
+     {  FONT_CHAR_SMALL_S_WITH_CARON        , "FONT_CHAR_SMALL_S_WITH_CARON"       , { "š" } , '\232' }, // š
+     {  FONT_CHAR_CAPITAL_Z_WITH_CARON      , "FONT_CHAR_CAPITAL_Z_WITH_CARON"     , { "Ž" } , '\216' }, // Ž
+     {  FONT_CHAR_SMALL_Z_WITH_CARON        , "FONT_CHAR_SMALL_Z_WITH_CARON"       , { "ž" } , '\236' }, // ž
+     {  FONT_CHAR_CAPITAL_Y_WITH_DIAERESIS  , "FONT_CHAR_CAPITAL_Y_WITH_DIAERESIS" , { "Ÿ" } , '\237' }, // Ÿ
+     // ---											    
+     {  FONT_CHAR_CAPITAL_C_WITH_CARON      , "FONT_CHAR_CAPITAL_C_WITH_CARON"     , { "Č" } , '\177' }, // Č
+     {  FONT_CHAR_SMALL_C_WITH_CARON        , "FONT_CHAR_SMALL_C_WITH_CARON"       , { "č" } , '\200' }, // č 
+     {  FONT_CHAR_CAPITAL_C_WITH_ACUTE      , "FONT_CHAR_CAPITAL_C_WITH_ACUTE"     , { "Ć" } , '\201' }, // Ć
+     {  FONT_CHAR_SMALL_C_WITH_ACUTE        , "FONT_CHAR_SMALL_C_WITH_ACUTE"       , { "ć" } , '\202' }, // ć
+     {  FONT_CHAR_CAPITAL_A_WITH_OGONEK     , "FONT_CHAR_CAPITAL_A_WITH_OGONEK"    , { "Ą" } , '\203' }, // Ą
+     {  FONT_CHAR_SMALL_A_WITH_OGONEK       , "FONT_CHAR_SMALL_A_WITH_OGONEK"      , { "ą" } , '\204' }, // ą
+     {  FONT_CHAR_CAPITAL_E_WITH_OGONEK     , "FONT_CHAR_CAPITAL_E_WITH_OGONEK"    , { "Ę" } , '\205' }, // Ę
+     {  FONT_CHAR_SMALL_E_WITH_OGONEK       , "FONT_CHAR_SMALL_E_WITH_OGONEK"      , { "ę" } , '\206' }, // ę
+     {  FONT_CHAR_CAPITAL_L_WITH_STROKE     , "FONT_CHAR_CAPITAL_L_WITH_STROKE"    , { "Ł" } , '\207' }, // Ł
+     {  FONT_CHAR_SMALL_L_WITH_STROKE       , "FONT_CHAR_SMALL_L_WITH_STROKE"      , { "ł" } , '\210' }, // ł
+     {  FONT_CHAR_CAPITAL_N_WITH_ACUTE      , "FONT_CHAR_CAPITAL_N_WITH_ACUTE"     , { "Ń" } , '\211' }, // Ń
+     {  FONT_CHAR_SMALL_N_WITH_ACUTE        , "FONT_CHAR_SMALL_N_WITH_ACUTE"       , { "ń" } , '\213' }, // ń
+     {  FONT_CHAR_CAPITAL_S_WITH_ACUTE      , "FONT_CHAR_CAPITAL_S_WITH_ACUTE"     , { "Ś" } , '\214' }, // Ś
+     {  FONT_CHAR_SMALL_S_WITH_ACUTE        , "FONT_CHAR_SMALL_S_WITH_ACUTE"       , { "ś" } , '\215' }, // ś
+     {  FONT_CHAR_CAPITAL_Z_WITH_ACUTE      , "FONT_CHAR_CAPITAL_Z_WITH_ACUTE"     , { "Ź" } , '\217' }, // Ź
+     {  FONT_CHAR_SMALL_Z_WITH_ACUTE        , "FONT_CHAR_SMALL_Z_WITH_ACUTE"       , { "ź" } , '\220' }, // ź
+     {  FONT_CHAR_CAPITAL_Z_WITH_DOT_ABOVE  , "FONT_CHAR_CAPITAL_Z_WITH_DOT_ABOVE" , { "Ż" } , '\221' }, // Ż
+     {  FONT_CHAR_SMALL_Z_WITH_DOT_ABOVE    , "FONT_CHAR_SMALL_Z_WITH_DOT_ABOVE"   , { "ż" } , '\222' }, // ż
+     {  FONT_CHAR_SMALL_I_DOTLESS           , "FONT_CHAR_SMALL_I_DOTLESS"          , { "ı" } , '\223' }, // ı
+     {  FONT_CHAR_CAPITAL_I_WITH_DOT        , "FONT_CHAR_CAPITAL_I_WITH_DOT"       , { "İ" } , '\224' }, // İ
+     {  FONT_CHAR_S_CAPITAL_WITH_CEDILLA    , "FONT_CHAR_S_CAPITAL_WITH_CEDILLA"   , { "Ş" } , '\225' }, // Ş
+     {  FONT_CHAR_S_SMALL_WITH_CEDILLA      , "FONT_CHAR_S_SMALL_WITH_CEDILLA"     , { "ş" } , '\226' }, // ş
+     {  FONT_CHAR_G_CAPITAL_WITH_BREVE      , "FONT_CHAR_G_CAPITAL_WITH_BREVE"     , { "Ğ" } , '\227' }, // Ğ
+     {  FONT_CHAR_G_SMALL_WITH_BREVE        , "FONT_CHAR_G_SMALL_WITH_BREVE"       , { "ğ" } , '\230' }, // ğ
+     {  FONT_CHAR_CAPITAL_R_WITH_CARON      , "FONT_CHAR_CAPITAL_R_WITH_CARON"     , { "Ř" } , '\231' }, // Ř
+     {  FONT_CHAR_SMALL_R_WITH_CARON        , "FONT_CHAR_SMALL_R_WITH_CARON"       , { "ř" } , '\233' }, // ř
+     {  FONT_CHAR_CAPITAL_E_WITH_CARON      , "FONT_CHAR_CAPITAL_E_WITH_CARON"     , { "Ě" } , '\234' }, // Ě
+     {  FONT_CHAR_SMALL_E_WITH_CARON        , "FONT_CHAR_SMALL_E_WITH_CARON"       , { "ě" } , '\235' }, // ě
+     {  FONT_CHAR_CAPITAL_U_WITH_RING_ABOVE , "FONT_CHAR_CAPITAL_U_WITH_RING_ABOVE", { "Ů" } , '\240' }, // Ů
+     {  FONT_CHAR_SMALL_U_WITH_RING_ABOVE   , "FONT_CHAR_SMALL_U_WITH_RING_ABOVE"  , { "ů" } , '\241' }  // ů
 };
-#endif
+#endif // BUILD_FONT_TOOL || CHAR_CONSTANTS_ONLY
+
+#if ! defined(CHAR_CONSTANTS_ONLY)
 
 #if ! defined(PLATFORM_GD77S)
 
@@ -2092,4 +2095,6 @@ const uint8_t font_AtariST_8x16[] = {
 
 #endif // ! PLATFORM_GD77S
 
-#endif /* __UC1701_CHARSET_H__ */
+#endif // ! CHAR_CONSTANT_ONLY
+
+#endif /* _OPENGD77_UC1701_CHARSET_H_ */

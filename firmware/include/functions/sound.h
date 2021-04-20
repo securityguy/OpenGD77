@@ -16,12 +16,12 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_SOUND_H_
-#define _FW_SOUND_H_
+#ifndef _OPENGD77_SOUND_H_
+#define _OPENGD77_SOUND_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
-#include "i2s.h"
+#include <FreeRTOS.h>
+#include <task.h>
+#include "interfaces/i2s.h"
 
 
 extern int melody_generic[512];
@@ -37,6 +37,8 @@ extern const int MELODY_DMR_TX_START_BEEP[];
 extern const int MELODY_DMR_TX_STOP_BEEP[];
 extern const int MELODY_KEY_BEEP_FIRST_ITEM[];
 extern const int MELODY_LOW_BATTERY[];
+extern const int MELODY_QUICKKEYS_CLEAR_ACK_BEEP[];
+extern const int MELODY_RX_TGTSCC_WARNING_BEEP[];
 
 extern volatile int *melody_play;
 extern volatile int melody_idx;
@@ -81,18 +83,19 @@ void soundStoreBuffer(void);
 void soundRetrieveBuffer(void);
 void soundTickRXBuffer(void);
 void soundSetupBuffer(void);
+void soundStopMelody(void);
 void soundTickMelody(void);
 
 
 //bit masks to track amp usage
-#define AUDIO_AMP_MODE_NONE 	0B00000000
-#define AUDIO_AMP_MODE_BEEP 	0B00000001
-#define AUDIO_AMP_MODE_RF 		0B00000010
-#define AUDIO_AMP_MODE_PROMPT 	0B00000100
+#define AUDIO_AMP_MODE_NONE 	0
+#define AUDIO_AMP_MODE_BEEP 	(1 << 0)
+#define AUDIO_AMP_MODE_RF 		(1 << 1)
+#define AUDIO_AMP_MODE_PROMPT 	(1 << 2)
 
 
 uint8_t getAudioAmpStatus(void);
 void enableAudioAmp(uint8_t mode);
 void disableAudioAmp(uint8_t mode);
 
-#endif /* _FW_SOUND_H_ */
+#endif /* _OPENGD77_SOUND_H_ */

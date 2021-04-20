@@ -17,10 +17,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef _ROTARY_SWITCH_H_
-#define _ROTARY_SWITCH_H_
+#ifndef _OPENGD77_ROTARY_SWITCH_H_
+#define _OPENGD77_ROTARY_SWITCH_H_
 
-#include <gpio.h>
+#include "interfaces/gpio.h"
 
 
 void rotarySwitchInit(void);
@@ -30,4 +30,4 @@ void rotarySwitchCheckRotaryEvent(uint32_t *position, int *event);
 #define EVENT_ROTARY_NONE   0
 #define EVENT_ROTARY_CHANGE 1
 
-#endif // _ROTARY_SWITCH_H_
+#endif // _OPENGD77_ROTARY_SWITCH_H_

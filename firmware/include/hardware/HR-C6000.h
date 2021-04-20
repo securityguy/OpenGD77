@@ -16,16 +16,16 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_HR_C6000_H_
-#define _FW_HR_C6000_H_
+#ifndef _OPENGD77_HR_C6000_H_
+#define _OPENGD77_HR_C6000_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <FreeRTOS.h>
+#include <task.h>
 
-#include "keyboard.h"
+#include "io/keyboard.h"
 
-#include "hr-c6000_spi.h"
-#include "usb_com.h"
+#include "interfaces/hr-c6000_spi.h"
+#include "usb/usb_com.h"
 
 #include "dmr_codec/codec.h"
 
@@ -39,21 +39,22 @@ extern volatile uint8_t DMR_frame_buffer[DMR_FRAME_BUFFER_SIZE];
 extern volatile bool updateLastHeard;
 extern volatile int dmrMonitorCapturedTS;
 extern char talkAliasText[33];
+extern volatile uint32_t readDMRRSSI;
 
 enum DMR_SLOT_STATE { DMR_STATE_IDLE, DMR_STATE_RX_1, DMR_STATE_RX_2, DMR_STATE_RX_END,
 					  DMR_STATE_TX_START_1, DMR_STATE_TX_START_2, DMR_STATE_TX_START_3, DMR_STATE_TX_START_4, DMR_STATE_TX_START_5,
-					  DMR_STATE_TX_1, DMR_STATE_TX_2, DMR_STATE_TX_END_1, DMR_STATE_TX_END_2, DMR_STATE_TX_END_3,
-					  DMR_STATE_REPEATER_WAKE_1, DMR_STATE_REPEATER_WAKE_2, DMR_STATE_REPEATER_WAKE_3, DMR_STATE_REPEATER_WAKE_4,
+					  DMR_STATE_TX_1, DMR_STATE_TX_2, DMR_STATE_TX_END_1, DMR_STATE_TX_END_2, DMR_STATE_TX_END_3_RMO, DMR_STATE_TX_END_3_DMO,
+					  DMR_STATE_REPEATER_WAKE_1, DMR_STATE_REPEATER_WAKE_2, DMR_STATE_REPEATER_WAKE_3,
 					  DMR_STATE_REPEATER_WAKE_FAIL_1, DMR_STATE_REPEATER_WAKE_FAIL_2 };
 
 enum WakingMode { WAKING_MODE_NONE, WAKING_MODE_WAITING, WAKING_MODE_FAILED };
 
-void SPI_HR_C6000_init(void);
-void SPI_C6000_postinit(void);
+void HRC6000_init(void);
 void PORTC_IRQHandler(void);
 void init_HR_C6000_interrupts(void);
 void init_digital_state(void);
 void init_digital_DMR_RX(void);
+void reset_timeslot_detection(void);
 void init_digital(void);
 void terminate_digital(void);
 void init_hrc6000_task(void);
@@ -71,4 +72,4 @@ int HRC6000GetReceivedSrcId(void);
 void HRC6000ClearTimecodeSynchronisation(void);
 void HRC6000SetCCFilterMode(bool enable);
 
-#endif /* _FW_HR_C6000_H_ */
+#endif /* _OPENGD77_HR_C6000_H_ */

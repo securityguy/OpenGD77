@@ -16,7 +16,7 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <pit.h>
+#include "interfaces/pit.h"
 
 volatile uint32_t timer_maintask;
 volatile uint32_t timer_beeptask;
@@ -27,7 +27,6 @@ volatile uint32_t timer_keypad_timeout;
 volatile uint32_t PITCounter;
 
 volatile uint32_t timer_mbuttons[3];
-volatile uint32_t timer_mbuttons_timeout[3];
 
 void init_pit(void)
 {
@@ -39,7 +38,6 @@ void init_pit(void)
 	timer_keypad = 0;
 	timer_keypad_timeout = 0;
 	timer_mbuttons[0] = timer_mbuttons[1] = timer_mbuttons[2] = 0;
-	timer_mbuttons_timeout[0] = timer_mbuttons_timeout[1] = timer_mbuttons_timeout[1] = 0;
 	taskEXIT_CRITICAL();
 
 	pit_config_t pitConfig;
@@ -86,25 +84,15 @@ void PIT0_IRQHandler(void)
 	{
 		timer_mbuttons[0]--;
 	}
-	if (timer_mbuttons_timeout[0] > 0)
-	{
-		timer_mbuttons_timeout[0]--;
-	}
+
 	if (timer_mbuttons[1] > 0)
 	{
 		timer_mbuttons[1]--;
 	}
-	if (timer_mbuttons_timeout[1] > 0)
-	{
-		timer_mbuttons_timeout[1]--;
-	}
+
 	if (timer_mbuttons[2] > 0)
 	{
 		timer_mbuttons[2]--;
-	}
-	if (timer_mbuttons_timeout[2] > 0)
-	{
-		timer_mbuttons_timeout[2]--;
 	}
 
     /* Clear interrupt flag.*/

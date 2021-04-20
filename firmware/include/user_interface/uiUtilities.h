@@ -15,37 +15,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef _MENU_UTILITY_QSO_DATA_H_
-#define _MENU_UTILITY_QSO_DATA_H_                    /**< Symbol preventing repeated inclusion */
-#include <user_interface/menuSystem.h>
-#include <functions/settings.h>
+#ifndef _OPENGD77_UIUTILITIES_H_
+#define _OPENGD77_UIUTILITIES_H_
 
-
-#define MAX_ZONE_SCAN_NUISANCE_CHANNELS       16
-#define NUM_LASTHEARD_STORED                  32
-
-#define QSO_TIMER_TIMEOUT                   2400
-
-#if defined(PLATFORM_RD5R)
-#define TX_TIMER_Y_OFFSET                     12
-#define CONTACT_Y_POS                         12
-#define CONTACT_FIRST_LINE_Y_POS              24
-#define CONTACT_SECOND_LINE_Y_POS             33
-#define SQUELCH_BAR_Y_POS                     14
-#define SQUELCH_BAR_H                          4
-#else
-#define TX_TIMER_Y_OFFSET                      8
-#define CONTACT_Y_POS                         16
-#define CONTACT_FIRST_LINE_Y_POS              32
-#define CONTACT_SECOND_LINE_Y_POS             48
-#define SQUELCH_BAR_Y_POS                     16
-#define SQUELCH_BAR_H                          9
-#endif
-
-#define FREQUENCY_X_POS  /* '>Ta'*/ ((3 * 8) + 4)
-#define MAX_POWER_SETTING_NUM                  9
-#define NUM_PC_OR_TG_DIGITS                    8
-#define MAX_TG_OR_PC_VALUE              16777215
+#include "user_interface/uiGlobals.h"
+#include "user_interface/menuSystem.h"
+#include "functions/settings.h"
 
 #if defined(PLATFORM_GD77S)
 #define ANNOUNCE_STATIC
@@ -57,25 +32,32 @@
 // Displaying ANNOUNCE_STATIC here is a bit overkill but it makes things clearer.
 ANNOUNCE_STATIC void announceRadioMode(bool voicePromptWasPlaying);
 ANNOUNCE_STATIC void announceZoneName(bool voicePromptWasPlaying);
-ANNOUNCE_STATIC void announceContactNameTgOrPc(void);
-ANNOUNCE_STATIC void announcePowerLevel(void);
+ANNOUNCE_STATIC void announceContactNameTgOrPc(bool voicePromptWasPlaying);
+ANNOUNCE_STATIC void announcePowerLevel(bool voicePromptWasPlaying);
 ANNOUNCE_STATIC void announceBatteryPercentage(void);
 ANNOUNCE_STATIC void announceTS(void);
 ANNOUNCE_STATIC void announceCC(void);
 ANNOUNCE_STATIC void announceChannelName(bool voicePromptWasPlaying);
 ANNOUNCE_STATIC void announceFrequency(void);
-ANNOUNCE_STATIC void announceVFOAndFrequency(void);
+ANNOUNCE_STATIC void announceVFOChannelName(void);
+ANNOUNCE_STATIC void announceVFOAndFrequency(bool announceVFOName);
+ANNOUNCE_STATIC void announceSquelchLevel(bool voicePromptWasPlaying);
+
 #endif
-
-extern struct_codeplugRxGroup_t currentRxGroupData;
-extern struct_codeplugContact_t currentContactData;
-extern struct_codeplugZone_t currentZone;
-
-enum UI_CALL_STATE { NOT_IN_CALL=0, PRIVATE_CALL_ACCEPT, PRIVATE_CALL, PRIVATE_CALL_DECLINED };
 
 typedef enum
 {
+	DIRECTION_NONE = 0U,
+	DIRECTION_TRANSMIT,
+	DIRECTION_RECEIVE
+} Direction_t;
+
+typedef enum
+{
+	PROMPT_SEQUENCE_CHANNEL_NAME_OR_VFO_FREQ_AND_MODE,
+	PROMPT_SEQUENCE_CHANNEL_NAME_AND_CONTACT_OR_VFO_FREQ_AND_MODE,
 	PROMPT_SEQUENCE_CHANNEL_NAME_OR_VFO_FREQ,
+	PROMPT_SEQUENCE_VFO_FREQ_UPDATE,
 	PROMPT_SEQUENCE_ZONE,
 	PROMPT_SEQUENCE_MODE,
 	PROMPT_SEQUENCE_CONTACT_TG_OR_PC,
@@ -84,126 +66,113 @@ typedef enum
 	PROMPT_SEQUENCE_POWER,
 	PROMPT_SEQUENCE_BATTERY,
 	PROMPT_SQUENCE_SQUELCH,
+	PROMPT_SEQUENCE_TEMPERATURE,
 	NUM_PROMPT_SEQUENCES
 } voicePromptItem_t;
 
-extern voicePromptItem_t voicePromptSequenceState;
-
-typedef struct dmrIdDataStruct
+typedef enum
 {
-	int id;
-	char text[20];
-} dmrIdDataStruct_t;
-
-#define MIN_ENTRIES_BEFORE_USING_SLICES 40 // Minimal number of available IDs before using slices stuff
-#define ID_SLICES 14 // Number of slices in whole DMRIDs DB
+	DISPLAY_INFO_CONTACT_INVERTED = 0U,
+	DISPLAY_INFO_CONTACT,
+	DISPLAY_INFO_CONTACT_OVERRIDE_FRAME,
+	DISPLAY_INFO_CHANNEL,
+	DISPLAY_INFO_SQUELCH,
+	DISPLAY_INFO_TONE_AND_SQUELCH,
+	DISPLAY_INFO_SQUELCH_CLEAR_AREA,
+	DISPLAY_INFO_TX_TIMER,
+	DISPLAY_INFO_ZONE
+} displayInformation_t;
 
 typedef struct
 {
-	uint32_t entries;
-	uint8_t  contactLength;
-	int32_t  slices[ID_SLICES]; // [0] is min availabel ID, [ID_SLICES - 1] is max available ID
-	uint32_t IDsPerSlice;
-
+	uint32_t 			entries;
+	uint8_t  			contactLength;
+	int32_t  			slices[ID_SLICES]; // [0] is min availabel ID, [ID_SLICES - 1] is max available ID
+	uint32_t 			IDsPerSlice;
 } dmrIDsCache_t;
 
-typedef struct LinkItem
-{
-    struct LinkItem *prev;
-    uint32_t 	id;
-    uint32_t 	talkGroupOrPcId;
-    char        contact[21];
-    char        talkgroup[17];
-    char 		talkerAlias[32];// 4 blocks of data. 6 bytes + 7 bytes + 7 bytes + 7 bytes . plus 1 for termination some more for safety.
-    char 		locator[7];
-    uint32_t	time;// current system time when this station was heard
-    struct LinkItem *next;
-} LinkItem_t;
 
-enum QSO_DISPLAY_STATE { QSO_DISPLAY_IDLE, QSO_DISPLAY_DEFAULT_SCREEN, QSO_DISPLAY_CALLER_DATA, QSO_DISPLAY_CALLER_DATA_UPDATE };
-
-typedef enum
-{
-	SCAN_SCANNING = 0,
-	SCAN_SHORT_PAUSED,
-	SCAN_PAUSED
-} ScanState_t;
-
-extern const char *POWER_LEVELS[];
-extern const char *POWER_LEVEL_UNITS[];
-extern const char *DMR_DESTINATION_FILTER_LEVELS[];
-extern const char *DMR_CCTS_FILTER_LEVELS[];
-extern const char *ANALOG_FILTER_LEVELS[];
-extern const int SCAN_SHORT_PAUSE_TIME;			//time to wait after carrier detected to allow time for full signal detection. (CTCSS or DMR)
-extern const int SCAN_TOTAL_INTERVAL;			    //time between each scan step
-extern const int SCAN_DMR_SIMPLEX_MIN_INTERVAL;		//minimum time between steps when scanning DMR Simplex. (needs extra time to capture TDMA Pulsing)
-extern const int SCAN_FREQ_CHANGE_SETTLING_INTERVAL;//Time after frequency is changed before RSSI sampling starts
-extern const int SCAN_SKIP_CHANNEL_INTERVAL;		//This is actually just an implicit flag value to indicate the channel should be skipped
-extern ScanState_t scanState;
-extern int scanTimer;
-extern bool scanActive;
-extern bool scanToneActive;
-extern bool displaySquelch;
-extern int scanDirection;
-
-
-extern LinkItem_t *LinkHead;
-extern int menuDisplayQSODataState;
-extern int qsodata_timer;
-extern uint32_t menuUtilityReceivedPcId;
-extern uint32_t menuUtilityTgBeforePcMode;
-extern const uint32_t RSSI_UPDATE_COUNTER_RELOAD;
-extern settingsStruct_t originalNonVolatileSettings; // used to store previous settings in options edition related menus.
-extern int nuisanceDelete[MAX_ZONE_SCAN_NUISANCE_CHANNELS];
-extern int nuisanceDeleteIndex;
-extern char freq_enter_digits[12];
-extern int freq_enter_idx;
-extern int numLastHeard;
-extern bool inhibitInitialVoicePrompt;
-extern int tmpQuickMenuDmrDestinationFilterLevel;
-extern int tmpQuickMenuDmrCcTsFilterLevel;
-extern int tmpQuickMenuAnalogFilterLevel;
 
 #define TS_NO_OVERRIDE  0
-bool tsIsOverridden(Channel_t chan);
-int8_t tsGetOverride(Channel_t chan);
-void tsSetOverride(Channel_t chan, int8_t ts);
-void tsSetContactOverride(Channel_t chan, struct_codeplugContact_t *contact);
-
+void tsSetManualOverride(Channel_t chan, int8_t ts);
+void tsSetFromContactOverride(Channel_t chan, struct_codeplugContact_t *contact);
+int8_t tsGetManualOverride(Channel_t chan);
+int8_t tsGetManualOverrideFromCurrentChannel(void);
+bool tsIsManualOverridden(Channel_t chan);
+void tsSetContactHasBeenOverriden(Channel_t chan, bool isOverriden);
+bool tsIsContactHasBeenOverridden(Channel_t chan);
+bool tsIsContactHasBeenOverriddenFromCurrentChannel(void);
 
 bool isQSODataAvailableForCurrentTalker(void);
+int alignFrequencyToStep(int freq, int step);
 char *chomp(char *str);
 int32_t getFirstSpacePos(char *str);
 void dmrIDCacheInit(void);
 bool dmrIDLookup(int targetId, dmrIdDataStruct_t *foundRecord);
 bool contactIDLookup(uint32_t id, int calltype, char *buffer);
-void menuUtilityRenderQSOData(void);
-void menuUtilityRenderHeader(void);
+void uiUtilityRenderQSOData(void);
+void uiUtilityRenderHeader(bool isVFODualWatchScanning);
+void uiUtilityRedrawHeaderOnly(bool isVFODualWatchScanning);
 LinkItem_t *lastheardFindInList(uint32_t id);
 void lastheardInitList(void);
 bool lastHeardListUpdate(uint8_t *dmrDataBuffer, bool forceOnHotspot);
 void lastHeardClearLastID(void);
-void drawRSSIBarGraph(void);
-void drawFMMicLevelBarGraph(void);
-void drawDMRMicLevelBarGraph(void);
+int getRSSIdBm(void);
+void uiUtilityDrawRSSIBarGraph(void);
+void uiUtilityDrawFMMicLevelBarGraph(void);
+void uiUtilityDrawDMRMicLevelBarGraph(void);
 void setOverrideTGorPC(int tgOrPc, bool privateCall);
-void printFrequency(bool isTX, bool hasFocus, uint8_t y, uint32_t frequency, bool displayVFOChannel, bool isScanMode);
-void printToneAndSquelch(void);
+void uiUtilityDisplayFrequency(uint8_t y, bool isTX, bool hasFocus, uint32_t frequency, bool displayVFOChannel, bool isScanMode, uint8_t dualWatchVFO);
+
+uint16_t cssGetTone(int32_t index, CSSTypes_t type);
+int cssIndex(uint16_t tone, CSSTypes_t type);
+void cssIncrement(uint16_t *tone, int32_t *index, CSSTypes_t *type, bool loop, bool stayInCSSType);
+void cssDecrement(uint16_t *tone, int32_t *index, CSSTypes_t *type);
+
+
 size_t snprintDCS(char *s, size_t n, uint16_t code, bool inverted);
-void reset_freq_enter_digits(void);
-int read_freq_enter_digits(int startDigit, int endDigit);
+
+void freqEnterReset(void);
+int freqEnterRead(int startDigit, int endDigit);
+
 int getBatteryPercentage(void);
-void decreasePowerLevel(void);
-void increasePowerLevel(void);
+void getBatteryVoltage(int *volts, int *mvolts);
+bool decreasePowerLevel(void);
+bool increasePowerLevel(bool allowFullPower);
 
 void announceChar(char ch);
-void announceCSSCode(uint16_t code, CSSTypes_t cssType, bool inverted);
+
+void buildCSSCodeVoicePrompts(uint16_t code, CSSTypes_t cssType, Direction_t direction, bool announceType);
+void announceCSSCode(uint16_t code, CSSTypes_t cssType, Direction_t direction, bool announceType, audioPromptThreshold_t immediateAnnounceThreshold);
 
 void announceItem(voicePromptItem_t item, audioPromptThreshold_t immediateAnnouceThreshold);
+void promptsPlayNotAfterTx(void);
 void playNextSettingSequence(void);
-void buildTgOrPCDisplayName(char *nameBuf, int bufferLen);
-void acceptPrivateCall(int id );
+void uiUtilityBuildTgOrPCDisplayName(char *nameBuf, int bufferLen);
+void acceptPrivateCall(int id, int timeslot);
 bool repeatVoicePromptOnSK1(uiEvent_t *ev);
+bool handleMonitorMode(uiEvent_t *ev);
+void uiUtilityDisplayInformation(const char *str, displayInformation_t line, int8_t yOverride);
+void uiUtilityRenderQSODataAndUpdateScreen(void);
 
+// QuickKeys
+void saveQuickkeyMenuIndex(char key, uint8_t menuId, uint8_t entryId, uint8_t function);
+void saveQuickkeyMenuLongValue(char key, uint8_t menuId, uint16_t entryiI);
+void saveQuickkeyContactIndex(char key, uint16_t contactId);
+
+void cssIncrement(uint16_t *tone, int32_t *index, CSSTypes_t *type, bool loop, bool stayInCSSType);
+uint16_t cssGetTone(int32_t index, CSSTypes_t type);
+
+bool uiShowQuickKeysChoices(char *buf, const int bufferLen, const char *menuTitle);
+
+// DTMF contact sequences
+void dtmfSequenceReset(void);
+bool dtmfSequenceIsKeying(void);
+void dtmfSequencePrepare(uint8_t *seq, bool autoStart);
+void dtmfSequenceStart(void);
+void dtmfSequenceStop(void);
+void dtmfSequenceTick(bool popPreviousMenuOnEnding);
+
+void resetOriginalSettingsData(void);
 
 #endif

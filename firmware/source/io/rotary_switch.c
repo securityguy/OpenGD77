@@ -18,7 +18,7 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <rotary_switch.h>
+#include "io/rotary_switch.h"
 
 #if defined(PLATFORM_GD77S)
 static uint8_t prevPosition;

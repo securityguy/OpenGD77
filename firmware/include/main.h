@@ -16,48 +16,46 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _MAIN_H_
-#define _MAIN_H_
-
-#define BSS_LOWER_BOTTOM  __attribute__((section(".bss.$RAM2")))
-#define BSS_LOWER_TOP     __attribute__((section(".bss.$RAM4")))
-#define DATA_LOWER_TOP    __attribute__((section(".data.$RAM4")))
+#ifndef _OPENGD77_MAIN_H_
+#define _OPENGD77_MAIN_H_
 
 #include <stdint.h>
 #include <stdio.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <FreeRTOS.h>
+#include <task.h>
+
+#include "utils.h"
 
 #include "virtual_com.h"
 #include "usb_com.h"
 
-#include "buttons.h"
-#include "LEDs.h"
-#include "keyboard.h"
-#include "rotary_switch.h"
-#include "display.h"
-#include "vox.h"
+#include "io/buttons.h"
+#include "io/LEDs.h"
+#include "io/keyboard.h"
+#include "io/rotary_switch.h"
+#include "io/display.h"
+#include "functions/vox.h"
 
-#include "UC1701.h"
+#include "hardware/UC1701.h"
 
-#include "i2c.h"
-#include "hr-c6000_spi.h"
-#include "i2s.h"
-#include "AT1846S.h"
-#include "HR-C6000.h"
-#include "wdog.h"
-#include "adc.h"
-#include "dac.h"
-#include "pit.h"
+#include "interfaces/i2c.h"
+#include "interfaces/hr-c6000_spi.h"
+#include "interfaces/i2s.h"
+#include "hardware/AT1846S.h"
+#include "hardware/HR-C6000.h"
+#include "interfaces/wdog.h"
+#include "interfaces/adc.h"
+#include "interfaces/dac.h"
+#include "interfaces/pit.h"
 
-#include "sound.h"
-#include "trx.h"
-#include "SPI_Flash.h"
-#include "EEPROM.h"
+#include "functions/sound.h"
+#include "functions/trx.h"
+#include "hardware/SPI_Flash.h"
+#include "hardware/EEPROM.h"
 
 
 void mainTaskInit(void);
 void powerOffFinalStage(void);
 
-#endif /* _MAIN_H_ */
+#endif /* _OPENGD77_MAIN_H_ */

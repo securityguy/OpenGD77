@@ -18,8 +18,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _VOX_H_
-#define _VOX_H_
+#ifndef _OPENGD77_VOX_H_
+#define _OPENGD77_VOX_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -31,4 +31,4 @@ bool voxIsTriggered(void);
 void voxReset(void);
 void voxTick(void);
 
-#endif /* _VOX_H_ */
+#endif /* _OPENGD77_VOX_H_ */

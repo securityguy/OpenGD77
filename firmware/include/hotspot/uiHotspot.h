@@ -15,11 +15,14 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef _FW_HOTSPOT_H_
-#define _FW_HOTSPOT_H_
+#ifndef _OPENGD77_HOTSPOT_H_
+#define _OPENGD77_HOTSPOT_H_
+
 #include "main.h"
+
 void hotspotRxFrameHandler(uint8_t *frameBuf);
 
 enum HOTSPOT_RX_STATE { HOTSPOT_RX_IDLE, HOTSPOT_RX_START, HOTSPOT_RX_START_LATE, HOTSPOT_RX_AUDIO_FRAME,
 		HOTSPOT_RX_STOP, HOTSPOT_RX_IDLE_OR_REPEAT, HOTSPOT_RX_UNKNOWN };
+
 #endif

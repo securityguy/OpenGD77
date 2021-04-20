@@ -16,13 +16,47 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_LEDS_H_
-#define _FW_LEDS_H_
+#ifndef _OPENGD77_LEDS_H_
+#define _OPENGD77_LEDS_H_
+
+#include <stdint.h>
+#include <stdbool.h>
+#include "functions/settings.h"
+
+#if ! defined(PLATFORM_GD77S)
+extern uint8_t LEDsState[2];
+#endif
 
 void LEDsInit(void);
 
 #if defined(PLATFORM_RD5R)
-void toggle_torch(void);
+void torchToggle(void);
 #endif
 
-#endif /* _FW_LEDS_H_ */
+
+static inline void LEDs_PinWrite(GPIO_Type *base, uint32_t pin, uint8_t output)
+{
+#if ! defined(PLATFORM_GD77S)
+	LEDsState[(base == GPIO_LEDred) ? 0 : 1] = output;
+
+	if ((nonVolatileSettings.bitfieldOptions & BIT_ALL_LEDS_DISABLED) == 0)
+#endif
+	{
+		GPIO_PinWrite(base, pin, output);
+	}
+}
+
+static inline uint32_t LEDs_PinRead(GPIO_Type *base, uint32_t pin)
+{
+#if ! defined(PLATFORM_GD77S)
+	if (nonVolatileSettings.bitfieldOptions & BIT_ALL_LEDS_DISABLED)
+	{
+		return LEDsState[(base == GPIO_LEDred) ? 0 : 1];
+	}
+#endif
+	return GPIO_PinRead(base, pin);
+}
+
+
+
+#endif /* _OPENGD77_LEDS_H_ */

@@ -15,79 +15,94 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <HR-C6000.h>
-#include <settings.h>
-#include <sound.h>
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiUtilities.h>
-#include <user_interface/uiLocalisation.h>
+#include "hardware/HR-C6000.h"
+#include "functions/settings.h"
+#include "functions/sound.h"
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiUtilities.h"
+#include "user_interface/uiLocalisation.h"
 
+#include "interfaces/clockManager.h"
+
+typedef enum
+{
+	TXSTOP_TIMEOUT,
+	TXSTOP_RX_ONLY,
+	TXSTOP_OUT_OF_BAND
+} txTerminationReason_t;
 
 static void updateScreen(void);
 static void handleEvent(uiEvent_t *ev);
+static void handleTxTermination(uiEvent_t *ev, txTerminationReason_t reason);
 
 static const int PIT_COUNTS_PER_SECOND = 10000;
 static int timeInSeconds;
 static uint32_t nextSecondPIT;
 static bool isShowingLastHeard;
-extern bool PTTToggledDown;
 static bool startBeepPlayed;
+static uint32_t m = 0, micm = 0, mto = 0;
+static uint32_t xmitErrorTimer = 0;
+static bool keepScreenShownOnError = false;
+static bool pttWasReleased = false;
+static bool isTransmittingTone = false;
+
+
 
 menuStatus_t menuTxScreen(uiEvent_t *ev, bool isFirstRun)
 {
-	static uint32_t m = 0, micm = 0, mto = 0;
 
 	if (isFirstRun)
 	{
 		voicePromptsTerminate();
 		startBeepPlayed = false;
-		scanActive = false;
-		trxIsTransmittingTone = false;
+		uiDataGlobal.Scan.active = false;
+		isTransmittingTone = false;
 		isShowingLastHeard = false;
+		keepScreenShownOnError = false;
+		timeInSeconds = 0;
+		pttWasReleased = false;
 
-		if (((currentChannelData->flag4 & 0x04) == 0x00) && (trxCheckFrequencyInAmateurBand(currentChannelData->txFreq) || (nonVolatileSettings.txFreqLimited == false)))
+		if (trxGetMode() == RADIO_MODE_DIGITAL)
+		{
+			clockManagerSetRunMode(kAPP_PowerModeHsrun);
+		}
+
+		// If the user was currently entering a new frequency and the PTT get pressed, "leave" that input screen.
+		if (uiDataGlobal.FreqEnter.index > 0)
+		{
+			freqEnterReset();
+			updateScreen();
+		}
+
+		if (((currentChannelData->flag4 & 0x04) == 0x00) && ((nonVolatileSettings.txFreqLimited == BAND_LIMITS_NONE) || trxCheckFrequencyInAmateurBand(currentChannelData->txFreq)))
 		{
 			nextSecondPIT = PITCounter + PIT_COUNTS_PER_SECOND;
 			timeInSeconds = currentChannelData->tot * 15;
 
-			GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
-			GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 1);
+			LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+			LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 1);
 
 			txstopdelay = 0;
 			clearIsWakingState();
 			if (trxGetMode() == RADIO_MODE_ANALOG)
 			{
 				trxSetTxCSS(currentChannelData->txTone);
+				trxSetTX();
 			}
-			trx_setTX();
+			else
+			{
+				// RADIO_MODE_DIGITAL
+				if (!((slot_state >= DMR_STATE_REPEATER_WAKE_1) && (slot_state <= DMR_STATE_REPEATER_WAKE_3)) )
+				{
+					trxSetTX();
+				}
+			}
+
 			updateScreen();
 		}
 		else
 		{
-			// Note.
-			// Currently these messages are not being displayed, because this screen gets immediately after the display is update
-			// However the melody will play
-			//
-			// We need to work out how to display this message for 1 or 2 seconds, even if the PTT is released.
-			// But this would require some sort of timer callback system, which we don't currently have.
-			//
-			ucClearBuf();
-
-			ucDrawRoundRectWithDropShadow(4, 4, 120, (DISPLAY_SIZE_Y - 6), 5, true);
-			ucPrintCentered(4, currentLanguage->error, FONT_SIZE_4);
-
-			if ((currentChannelData->flag4 & 0x04) != 0x00)
-			{
-				ucPrintCentered((DISPLAY_SIZE_Y - 24), currentLanguage->rx_only, FONT_SIZE_3);
-			}
-			else
-			{
-				ucPrintCentered((DISPLAY_SIZE_Y - 24), currentLanguage->out_of_band, FONT_SIZE_3);
-			}
-			ucRender();
-			displayLightOverrideTimeout(-1);
-			soundSetMelody(MELODY_ERROR_BEEP);
-			PTTToggledDown = false;
+			handleTxTermination(ev, (((currentChannelData->flag4 & 0x04) != 0x00) ? TXSTOP_RX_ONLY : TXSTOP_OUT_OF_BAND));
 		}
 
 		m = micm = ev->time;
@@ -96,8 +111,33 @@ menuStatus_t menuTxScreen(uiEvent_t *ev, bool isFirstRun)
 	{
 
 #if defined(PLATFORM_GD77S)
-		heartBeatActivityForGD77S(ev);
+		uiChannelModeHeartBeatActivityForGD77S(ev);
 #endif
+
+		// Keep displaying the "RX Only" or "Out Of Band" error message
+		if (xmitErrorTimer > 0)
+		{
+			// Wait the voice ends, then count-down 200ms;
+			if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
+			{
+				if (voicePromptsIsPlaying())
+				{
+					xmitErrorTimer = (20 * 10U);
+					return MENU_STATUS_SUCCESS;
+				}
+			}
+
+			xmitErrorTimer--;
+
+			if (xmitErrorTimer == 0)
+			{
+				ev->buttons &= ~BUTTON_PTT; // prevent screen lockout if the operator keeps pressing the PTT button.
+			}
+			else
+			{
+				return MENU_STATUS_SUCCESS;
+			}
+		}
 
 		if (trxTransmissionEnabled && (getIsWakingState() == WAKING_MODE_NONE))
 		{
@@ -121,14 +161,8 @@ menuStatus_t menuTxScreen(uiEvent_t *ev, bool isFirstRun)
 
 				if ((currentChannelData->tot != 0) && (timeInSeconds == 0))
 				{
-					soundSetMelody(MELODY_TX_TIMEOUT_BEEP);
-
-					ucClearBuf();
-					ucPrintCentered(20, currentLanguage->timeout, FONT_SIZE_4);
-					ucRender();
-					PTTToggledDown = false;
-					mto = ev->time;
-					voxReset();
+					handleTxTermination(ev, TXSTOP_TIMEOUT);
+					keepScreenShownOnError = true;
 				}
 				else
 				{
@@ -159,15 +193,16 @@ menuStatus_t menuTxScreen(uiEvent_t *ev, bool isFirstRun)
 					}
 				}
 
-				if ((ev->time - micm) > 100)
+				// Do not update Mic level on Timeout.
+				if ((((currentChannelData->tot != 0) && (timeInSeconds == 0)) == false) && (ev->time - micm) > 100)
 				{
 					if (mode == RADIO_MODE_DIGITAL)
 					{
-						drawDMRMicLevelBarGraph();
+						uiUtilityDrawDMRMicLevelBarGraph();
 					}
 					else
 					{
-						drawFMMicLevelBarGraph();
+						uiUtilityDrawFMMicLevelBarGraph();
 					}
 
 					ucRenderRows(1, 2);
@@ -179,13 +214,42 @@ menuStatus_t menuTxScreen(uiEvent_t *ev, bool isFirstRun)
 
 		// Timeout happened, postpone going further otherwise timeout
 		// screen won't be visible at all.
-		if ((currentChannelData->tot != 0) && (timeInSeconds == 0))
+		if (((currentChannelData->tot != 0) && (timeInSeconds == 0)) || keepScreenShownOnError)
 		{
+			// Wait the voice ends, then count-down 500ms;
+			if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
+			{
+				if (voicePromptsIsPlaying())
+				{
+					mto = ev->time;
+					return MENU_STATUS_SUCCESS;
+				}
+			}
+
 			if ((ev->time - mto) < 500)
 			{
 				return MENU_STATUS_SUCCESS;
 			}
+
+			keepScreenShownOnError = false;
+			ev->buttons &= ~BUTTON_PTT; // prevent screen lockout if the operator keeps pressing the PTT button.
 		}
+
+		// Once the PTT key has been released, it is forbidden to re-key before the whole TX chain
+		// has finished (see the first statement in handleEvent())
+		// That's important in DMR mode, otherwise quickly press/release the PTT key will left
+		// the system in an unexpected state (RED led on, displayed TXScreen, but PA off).
+		// It doesn't have any impact on FM mode.
+		if (((ev->buttons & BUTTON_PTT) == 0) && (pttWasReleased == false))
+		{
+			pttWasReleased = true;
+		}
+
+		if ((ev->buttons & BUTTON_PTT) && pttWasReleased)
+		{
+			ev->buttons &= ~BUTTON_PTT;
+		}
+		//
 
 
 		// Got an event, or
@@ -197,21 +261,38 @@ menuStatus_t menuTxScreen(uiEvent_t *ev, bool isFirstRun)
 			handleEvent(ev);
 			m = ev->time;
 		}
+		else
+		{
+			if ((getIsWakingState() == WAKING_MODE_FAILED) && (trxTransmissionEnabled == true))
+			{
+				trxTransmissionEnabled = false;
+				handleTxTermination(ev, TXSTOP_TIMEOUT);
+				keepScreenShownOnError = true;
+			}
+		}
 	}
 	return MENU_STATUS_SUCCESS;
 }
 
+bool menuTxScreenDisplaysLastHeard(void)
+{
+	return isShowingLastHeard;
+}
+
 static void updateScreen(void)
 {
-	menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
-	if (menuControlData.stack[0] == UI_VFO_MODE)
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
+	if (menuDataGlobal.controlData.stack[0] == UI_VFO_MODE)
 	{
 		uiVFOModeUpdateScreen(timeInSeconds);
-		displayLightOverrideTimeout(-1);
 	}
 	else
 	{
 		uiChannelModeUpdateScreen(timeInSeconds);
+	}
+
+	if (nonVolatileSettings.backlightMode != BACKLIGHT_MODE_BUTTONS)
+	{
 		displayLightOverrideTimeout(-1);
 	}
 }
@@ -225,20 +306,22 @@ static void handleEvent(uiEvent_t *ev)
 		if (trxTransmissionEnabled)
 		{
 			trxTransmissionEnabled = false;
-			trxIsTransmittingTone = false;
+			isTransmittingTone = false;
 
 			if (trxGetMode() == RADIO_MODE_ANALOG)
 			{
 				// In analog mode. Stop transmitting immediately
-				GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
+				LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
 
 				// Need to wrap this in Task Critical to avoid bus contention on the I2C bus.
-				taskENTER_CRITICAL();
 				trxSetRxCSS(currentChannelData->rxTone);
+				//taskENTER_CRITICAL();
 				trxActivateRx();
 				trxIsTransmitting = false;
-				taskEXIT_CRITICAL();
+				//taskEXIT_CRITICAL();
+
 				menuSystemPopPreviousMenu();
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // we need immediate redraw
 			}
 			else
 			{
@@ -248,40 +331,48 @@ static void handleEvent(uiEvent_t *ev)
 					updateScreen();
 				}
 			}
-			// When not in analogue mode, only the trxIsTransmitting flag is cleared
+			// When not in analog mode, only the trxIsTransmitting flag is cleared
 			// This screen keeps getting called via the handleEvent function and goes into the else clause - below.
 		}
 		else
 		{
 			// In DMR mode, wait for the DMR system to finish before exiting
-
-			if (!trxIsTransmitting)
+			if (trxIsTransmitting == false)
 			{
 				if ((nonVolatileSettings.beepOptions & BEEP_TX_STOP) && (melody_play == NULL))
 				{
 					soundSetMelody(MELODY_DMR_TX_STOP_BEEP);
 				}
 
-				GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
+				LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
 
 				// If there is a signal, lit the Green LED
-				if ((GPIO_PinRead(GPIO_LEDgreen, Pin_LEDgreen) == 0) && (trxCarrierDetected() || (getAudioAmpStatus() & AUDIO_AMP_MODE_RF)))
+				if ((LEDs_PinRead(GPIO_LEDgreen, Pin_LEDgreen) == 0) && (trxCarrierDetected() || (getAudioAmpStatus() & AUDIO_AMP_MODE_RF)))
 				{
-					GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+					LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+				}
+
+				if (trxGetMode() == RADIO_MODE_DIGITAL)
+				{
+					clockManagerSetRunMode(kAPP_PowerModeRun);
 				}
 
 				menuSystemPopPreviousMenu();
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // we need immediate redraw
 			}
 		}
+
+		// Waiting for TX to end, no need to go further.
+		return;
 	}
 
 	// Key action while xmitting (ANALOG), Tone triggering
-	if (!trxIsTransmittingTone && ((ev->buttons & BUTTON_PTT) != 0) && trxTransmissionEnabled && (trxGetMode() == RADIO_MODE_ANALOG))
+	if (!isTransmittingTone && ((ev->buttons & BUTTON_PTT) != 0) && trxTransmissionEnabled && (trxGetMode() == RADIO_MODE_ANALOG))
 	{
 		// Send 1750Hz
 		if (BUTTONCHECK_DOWN(ev, BUTTON_SK2))
 		{
-			trxIsTransmittingTone = true;
+			isTransmittingTone = true;
 			trxSetTone1(1750);
 			trxSelectVoiceChannel(AT1846_VOICE_CHANNEL_TONE1);
 			enableAudioAmp(AUDIO_AMP_MODE_RF);
@@ -294,7 +385,7 @@ static void handleEvent(uiEvent_t *ev)
 			if (keyval != 99)
 			{
 				trxSetDTMF(keyval);
-				trxIsTransmittingTone = true;
+				isTransmittingTone = true;
 				trxSelectVoiceChannel(AT1846_VOICE_CHANNEL_DTMF);
 				enableAudioAmp(AUDIO_AMP_MODE_RF);
 				GPIO_PinWrite(GPIO_RX_audio_mux, Pin_RX_audio_mux, 1);
@@ -303,25 +394,85 @@ static void handleEvent(uiEvent_t *ev)
 	}
 
 	// Stop xmitting Tone
-	if (trxIsTransmittingTone && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0) && ((ev->keys.key == 0) || (ev->keys.event & KEY_MOD_UP)))
+	if (isTransmittingTone && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0) && ((ev->keys.key == 0) || (ev->keys.event & KEY_MOD_UP)))
 	{
-		trxIsTransmittingTone = false;
+		isTransmittingTone = false;
 		trxSelectVoiceChannel(AT1846_VOICE_CHANNEL_MIC);
 		disableAudioAmp(AUDIO_AMP_MODE_RF);
 	}
 
-	if ((trxGetMode() == RADIO_MODE_DIGITAL) && BUTTONCHECK_DOWN(ev, BUTTON_SK1) && (isShowingLastHeard == false) && (trxTransmissionEnabled == true))
+	if ((trxGetMode() == RADIO_MODE_DIGITAL) && BUTTONCHECK_SHORTUP(ev, BUTTON_SK1) && (trxTransmissionEnabled == true))
 	{
-		isShowingLastHeard = true;
-		menuLastHeardUpdateScreen(false, false, false);
-	}
-	else
-	{
-		if (isShowingLastHeard && (BUTTONCHECK_DOWN(ev, BUTTON_SK1) == 0))
+		isShowingLastHeard = !isShowingLastHeard;
+		if (isShowingLastHeard)
 		{
-			isShowingLastHeard = false;
+			menuLastHeardInit();
+			menuLastHeardUpdateScreen(false, false, false);
+		}
+		else
+		{
 			updateScreen();
 		}
 	}
 
+	// Forward key events to LH screen, if shown
+	if (isShowingLastHeard && (ev->events & KEY_EVENT))
+	{
+		menuLastHeardHandleEvent(ev);
+	}
+
+}
+
+static void handleTxTermination(uiEvent_t *ev, txTerminationReason_t reason)
+{
+	PTTToggledDown = false;
+	voxReset();
+
+	ucClearBuf();
+
+	voicePromptsTerminate();
+	voicePromptsInit();
+
+	ucDrawRoundRectWithDropShadow(4, 4, 120, (DISPLAY_SIZE_Y - 6), 5, true);
+
+	switch (reason)
+	{
+		case TXSTOP_RX_ONLY:
+		case TXSTOP_OUT_OF_BAND:
+			ucPrintCentered(4, currentLanguage->error, FONT_SIZE_4);
+
+			voicePromptsAppendLanguageString(&currentLanguage->error);
+			voicePromptsAppendPrompt(PROMPT_SILENCE);
+
+			if ((currentChannelData->flag4 & 0x04) != 0x00)
+			{
+				ucPrintCentered((DISPLAY_SIZE_Y - 24), currentLanguage->rx_only, FONT_SIZE_3);
+				voicePromptsAppendLanguageString(&currentLanguage->rx_only);
+			}
+			else
+			{
+				ucPrintCentered((DISPLAY_SIZE_Y - 24), currentLanguage->out_of_band, FONT_SIZE_3);
+				voicePromptsAppendLanguageString(&currentLanguage->out_of_band);
+			}
+			xmitErrorTimer = (100 * 10U);
+			break;
+
+		case TXSTOP_TIMEOUT:
+			ucPrintCentered(16, currentLanguage->timeout, FONT_SIZE_4);
+			voicePromptsAppendLanguageString(&currentLanguage->timeout);
+			mto = ev->time;
+			break;
+	}
+
+	ucRender();
+	displayLightOverrideTimeout(-1);
+
+	if (nonVolatileSettings.audioPromptMode < AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
+	{
+		soundSetMelody((reason == TXSTOP_TIMEOUT) ? MELODY_TX_TIMEOUT_BEEP : MELODY_ERROR_BEEP);
+	}
+	else
+	{
+		voicePromptsPlay();
+	}
 }

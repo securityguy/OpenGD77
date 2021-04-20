@@ -23,7 +23,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/DMRSlotType.h>
+#include "hotspot/DMRSlotType.h"
 
 static const uint16_t ENCODING_TABLE_2087[] =
 	{0x0000U, 0xB08EU, 0xE093U, 0x501DU, 0x70A9U, 0xC027U, 0x903AU, 0x20B4U, 0x60DCU, 0xD052U, 0x804FU, 0x30C1U,

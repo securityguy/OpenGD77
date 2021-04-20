@@ -16,13 +16,13 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_CODEC_H_
-#define _FW_CODEC_H_
+#ifndef _OPENGD77_CODEC_H_
+#define _OPENGD77_CODEC_H_
 
-#include "HR-C6000.h"
+#include "hardware/HR-C6000.h"
 
-#include "sound.h"
-#include "mbelib.h"
+#include "functions/sound.h"
+#include "dmr_codec/mbelib.h"
 
 #define QUAUX(X) #X
 #define QU(X) QUAUX(X)
@@ -30,14 +30,11 @@
 #define AMBE_DECODE 0x00054319;
 #define AMBE_ENCODE 0x00053E70;
 #define AMBE_ENCODE_ECC 0x00054228;
-#define AMBE_DECODE_BUFFER 0x1FFF859C;
-#define AMBE_ENCODE_BUFFER 0x1FFF6B60;
-#define AMBE_ENCODE_ECC_BUFFER 0x1FFF8244;
-
 
 void codecInit(void);
 void codecInitInternalBuffers(void);
 void codecDecode(uint8_t *indata_ptr, int numbBlocks);
 void codecEncode(uint8_t *outdata_ptr, int numbBlocks);
+void codecEncodeBlock(uint8_t *outdata_ptr);
 
-#endif /* _FW_CODEC_H_ */
+#endif /* _OPENGD77_CODEC_H_ */

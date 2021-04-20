@@ -16,12 +16,12 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_AT1846S_H_
-#define _FW_AT1846S_H_
+#ifndef _OPENGD77_AT1846S_H_
+#define _OPENGD77_AT1846S_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
-#include "i2c.h"
+#include <FreeRTOS.h>
+#include <task.h>
+#include "interfaces/i2c.h"
 
 #define AT1846_BYTES_PER_COMMAND 3
 #define BANDWIDTH_12P5KHZ false
@@ -40,6 +40,7 @@ void AT1846SetMode(void);
 void AT1846ReadVoxAndMicStrength(void);
 void AT1846ReadRSSIAndNoise(void);
 int AT1846SetClearReg2byteWithMask(uint8_t reg, uint8_t mask1, uint8_t mask2, uint8_t val1, uint8_t val2);
+status_t AT1846SWriteReg2byte(uint8_t reg, uint8_t val1, uint8_t val2);
+status_t AT1846SReadReg2byte(uint8_t reg, uint8_t *val1, uint8_t *val2);
 
-
-#endif /* _FW_AT1846S_H_ */
+#endif /* _OPENGD77_AT1846S_H_ */

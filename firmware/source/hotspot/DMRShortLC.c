@@ -18,12 +18,12 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/BPTC19696.h>
-#include <hotspot/dmrDefines.h>
-#include <hotspot/dmrUtils.h>
-#include <hotspot/DMRShortLC.h>
-#include <hotspot/Hamming.h>
-#include <hotspot/RS129.h>
+#include "hotspot/BPTC19696.h"
+#include "hotspot/dmrDefines.h"
+#include "hotspot/dmrUtils.h"
+#include "hotspot/DMRShortLC.h"
+#include "hotspot/Hamming.h"
+#include "hotspot/RS129.h"
 
 
 

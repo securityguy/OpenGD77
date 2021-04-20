@@ -16,10 +16,10 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <keyboard.h>
-#include <pit.h>
-#include <settings.h>
-#include <gpio.h>
+#include "io/keyboard.h"
+#include "interfaces/pit.h"
+#include "functions/settings.h"
+#include "interfaces/gpio.h"
 
 static char oldKeyboardCode;
 static uint32_t keyDebounceScancode;

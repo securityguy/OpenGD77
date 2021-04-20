@@ -15,8 +15,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiLocalisation.h>
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiLocalisation.h"
 
 static void updateScreen(void);
 static void handleEvent(uiEvent_t *ev);
@@ -43,7 +43,6 @@ static void updateScreen(void)
 	ucPrintCentered(12, currentLanguage->power_off, FONT_SIZE_3);
 	ucPrintCentered(32, "73", FONT_SIZE_3);
 	ucRender();
-	displayLightTrigger();
 }
 
 static void handleEvent(uiEvent_t *ev)

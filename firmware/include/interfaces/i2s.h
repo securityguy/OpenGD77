@@ -16,8 +16,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_I2S_H_
-#define _FW_I2S_H_
+#ifndef _OPENGD77_I2S_H_
+#define _OPENGD77_I2S_H_
 
 #include "fsl_port.h"
 #include "fsl_dmamux.h"
@@ -25,7 +25,7 @@
 #include "fsl_sai.h"
 #include "fsl_sai_edma.h"
 
-#include "sound.h"
+#include "functions/sound.h"
 
 #define NUM_I2S_BUFFERS 4
 
@@ -104,4 +104,4 @@ void I2STerminateTransfers(void);
 void I2STransferReceive(uint8_t *buff,size_t bufferLen);
 void I2STransferTransmit(uint8_t *buff,size_t bufferLen);
 
-#endif /* _FW_I2S_H_ */
+#endif /* _OPENGD77_I2S_H_ */

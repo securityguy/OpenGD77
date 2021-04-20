@@ -16,11 +16,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_PIT_H_
-#define _FW_PIT_H_
+#ifndef _OPENGD77_PIT_H_
+#define _OPENGD77_PIT_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <FreeRTOS.h>
+#include <task.h>
 
 #include "fsl_pit.h"
 
@@ -34,9 +34,8 @@ extern volatile uint32_t PITCounter;
 
 // For long press handling
 extern volatile uint32_t timer_mbuttons[3];
-extern volatile uint32_t timer_mbuttons_timeout[3];
 
 void init_pit(void);
 void PIT0_IRQHandler(void);
 
-#endif /* _FW_PIT_H_ */
+#endif /* _OPENGD77_PIT_H_ */

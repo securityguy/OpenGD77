@@ -21,13 +21,13 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef __UC1701_H__
-#define __UC1701_H__
+#ifndef _OPENGD77_UC1701_H_
+#define _OPENGD77_UC1701_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
-#include <math.h>
 #include <stdbool.h>
+#include <math.h>
+#include <FreeRTOS.h>
+#include <task.h>
 
 
 typedef enum
@@ -51,6 +51,7 @@ typedef enum
 	CHOICE_OK = 0,
 	CHOICE_YESNO,
 	CHOICE_DISMISS,
+	CHOICES_OKARROWS,// QuickKeys
 	CHOICES_NUM
 } ucChoice_t;
 
@@ -84,7 +85,9 @@ void ucDrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, bool color);
 void ucDrawFastVLine(int16_t x, int16_t y, int16_t h, bool color);
 void ucDrawFastHLine(int16_t x, int16_t y, int16_t w, bool color);
 
+void ucDrawCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, bool color);
 void ucDrawCircle(int16_t x0, int16_t y0, int16_t r, bool color);
+void ucFillCircleHelper(int16_t x0, int16_t y0, int16_t r, uint8_t cornername, int16_t delta, bool color);
 void ucFillCircle(int16_t x0, int16_t y0, int16_t r, bool color);
 
 void ucDrawEllipse(int16_t x0, int16_t y0, int16_t x1, int16_t y1, bool color);
@@ -107,9 +110,10 @@ void ucDrawXBitmap(int16_t x, int16_t y, const uint8_t *bitmap, int16_t w, int16
 
 void ucSetContrast(uint8_t contrast);
 void ucSetInverseVideo(bool isInverted);
+void ucSetDisplayPowerMode(bool wake);
 
 void ucDrawChoice(ucChoice_t choice, bool clearRegion);
 
 uint8_t * ucGetDisplayBuffer(void);
 
-#endif /* __UC1701_H__ */
+#endif /* _OPENGD77_UC1701_H_ */

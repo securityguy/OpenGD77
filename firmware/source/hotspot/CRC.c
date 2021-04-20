@@ -18,11 +18,11 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/CRC.h>
-#include <hotspot/dmrUtils.h>
-
 #include <stddef.h>
 #include <assert.h>
+
+#include "hotspot/CRC.h"
+#include "hotspot/dmrUtils.h"
 
 
 const uint8_t CRC8_TABLE[] = {
