@@ -15,11 +15,11 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiLocalisation.h>
-#include <user_interface/uiUtilities.h>
-#include <settings.h>
-#include <ticks.h>
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiLocalisation.h"
+#include "user_interface/uiUtilities.h"
+#include "functions/settings.h"
+#include "functions/ticks.h"
 
 enum LOCK_STATE { LOCK_NONE = 0x00, LOCK_KEYPAD = 0x01, LOCK_PTT = 0x02, LOCK_BOTH = 0x03 };
 
@@ -28,7 +28,7 @@ static void handleEvent(uiEvent_t *ev);
 
 static bool lockDisplayed = false;
 static const uint32_t TIMEOUT_MS = 500;
-int lockState = LOCK_NONE;
+static int lockState = LOCK_NONE;
 
 menuStatus_t menuLockScreen(uiEvent_t *ev, bool isFirstRun)
 {
@@ -145,8 +145,6 @@ static void redrawScreen(bool update, bool state)
 	}
 
 	ucRender();
-	displayLightTrigger();
-
 	lockDisplayed = true;
 }
 
@@ -212,8 +210,6 @@ static void updateScreen(bool updateOnly)
 
 static void handleEvent(uiEvent_t *ev)
 {
-	displayLightTrigger();
-
 	if (ev->events & BUTTON_EVENT)
 	{
 		if (repeatVoicePromptOnSK1(ev))

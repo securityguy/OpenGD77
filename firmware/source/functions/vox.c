@@ -18,15 +18,15 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <vox.h>
-#include <interfaces/adc.h>
-#include <functions/sound.h>
-#include <functions/settings.h>
+#include "functions/vox.h"
+#include "interfaces/adc.h"
+#include "functions/sound.h"
+#include "functions/settings.h"
+#include "interfaces/pit.h"
+#include "utils.h"
 
 
 #define PIT_COUNTS_PER_MS  10U
-
-extern volatile uint32_t PITCounter;
 
 
 static const uint32_t VOX_TAIL_TIME_UNIT = (PIT_COUNTS_PER_MS * 500); // 500ms tail unit
@@ -116,7 +116,7 @@ void voxTick(void)
 
 				if (vox.averaged >= (vox.noiseFloor + vox.threshold))
 				{
-					vox.preTrigger = MIN((vox.preTrigger + 1), 100);
+					vox.preTrigger = SAFE_MIN((vox.preTrigger + 1), 100);
 
 					// We need 100ms of level above the noise to trigger the VOX
 					if (vox.preTrigger >= 100)

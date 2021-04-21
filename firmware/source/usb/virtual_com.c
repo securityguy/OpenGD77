@@ -5,23 +5,23 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#include "fsl_device_registers.h"
-#include "clock_config.h"
-#if defined(USE_SEGGER_RTT)
-#include <SeggerRTT/RTT/SEGGER_RTT.h>
-#endif
-
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "virtual_com.h"
+#include "fsl_device_registers.h"
+#include "clock_config.h"
+#if defined(USING_EXTERNAL_DEBUGGER)
+#include "SeggerRTT/RTT/SEGGER_RTT.h"
+#endif
+
+#include "usb/virtual_com.h"
 
 #if defined(USB_DEVICE_CONFIG_EHCI) && (USB_DEVICE_CONFIG_EHCI > 0)
 #include "usb_phy.h"
 #endif
-#include "fsl_common.h"
+#include "drivers/fsl_common.h"
 
-#include <usb_com.h>
+#include "usb/usb_com.h"
 
 /*******************************************************************************
 * Definitions
@@ -439,7 +439,7 @@ void USB_DeviceApplicationInit(void)
 
     if (kStatus_USB_Success != USB_DeviceClassInit(CONTROLLER_ID, &s_cdcAcmConfigList, &s_cdcVcom.deviceHandle))
     {
-#if defined(USE_SEGGER_RTT)
+#if defined(USING_EXTERNAL_DEBUGGER) && defined(DEBUG_USB)
     	SEGGER_RTT_printf(0, "USB device init failed\r\n");
 #endif
 //        usb_echo("USB device init failed\r\n");

@@ -1,3 +1,9 @@
+*.orig
+*.rej
+*#
+*~
+*.diff
+*to_utf-8*.h
 /firmware/.settings
 /firmware/Debug
 /firmware/Debug_GD-77
@@ -12,5 +18,9 @@
 /ComTool/ComTool/bin
 /ComTool/ComTool/obj
 /tools/font_tools/font_converter/font_*
+/tools/font_tools/font_converter/UC1701_font_tool
+/tools/font_tools/font_converter/UC1701_font_tool.o
+/tools/font_tools/font_converter/UC1701_font_tool_JA
+/tools/font_tools/font_converter/UC1701_font_tool_JA.o
 /tools/bin2sgl/.vs
 /tools/bin2sgl/obj

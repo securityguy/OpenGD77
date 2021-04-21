@@ -13,7 +13,7 @@
  *	GNU General Public License for more details.
  */
 
-#include <hotspot/dmrUtils.h>
+#include "hotspot/dmrUtils.h"
 
 
 void dmrUtils_byteToBitsBE(unsigned char byte, bool *bits)

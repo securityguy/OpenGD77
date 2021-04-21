@@ -18,7 +18,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/RS129.h>
+#include "hotspot/RS129.h"
 
 #define NPAR  3U
 

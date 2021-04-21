@@ -129,4 +129,15 @@ int getVOX(void)
 	return adcVOX;
 }
 
+int getTemperature(void)
+{
+#if defined(PLATFORM_DM1801)
+	const int OFFSET = 9420;// Value needs to be validated as average for this radio
+#elif defined(PLATFORM_RD5R)
+	const int OFFSET = 9130;// Value needs to be validated as average for this radio
+#else
+	const int OFFSET = 9250;// Value needs to be validated as average for this radio
+#endif
 
+	return  (OFFSET + (nonVolatileSettings.temperatureCalibration * 10) - (adcTemperature  / (TEMPERATURE_DECIMAL_RESOLUTION / 10))) / 2;
+}

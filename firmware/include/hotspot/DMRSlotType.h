@@ -22,8 +22,8 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _DMR_DMRSLOTTYPE_H_
-#define _DMR_DMRSLOTTYPE_H_
+#ifndef _OPENGD77_DMRSLOTTYPE_H_
+#define _OPENGD77_DMRSLOTTYPE_H_
 
 #include <stdbool.h>
 #include <stdint.h>

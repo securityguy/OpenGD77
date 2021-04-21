@@ -15,14 +15,20 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <gpio.h>
+#include "interfaces/gpio.h"
+#include "io/LEDs.h"
+
+#if ! defined(PLATFORM_GD77S)
+uint8_t LEDsState[2] = { 0, 0 };
+#endif
+
 
 void LEDsInit(void)
 {
 	gpioInitLEDs();
 
-    GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
-    GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
+    LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+    LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
 
 #if defined(PLATFORM_RD5R)
 	GPIO_PinWrite(GPIO_Torch, Pin_Torch, 0);
@@ -31,11 +37,11 @@ void LEDsInit(void)
 
 #if defined(PLATFORM_RD5R)
 // Baofeng DM-5R torch LED
-static bool torch_state = false;
+static bool torchState = false;
 
-void toggle_torch(void)
+void torchToggle(void)
 {
-	torch_state = !torch_state;
-	GPIO_PinWrite(GPIO_Torch, Pin_Torch, torch_state);
+	torchState = !torchState;
+	GPIO_PinWrite(GPIO_Torch, Pin_Torch, torchState);
 }
 #endif

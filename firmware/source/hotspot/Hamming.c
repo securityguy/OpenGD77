@@ -18,7 +18,7 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/Hamming.h>
+#include "hotspot/Hamming.h"
 
  // Hamming (15,11,3) check a boolean data array
 bool Hamming_decode15113_1(bool *d)

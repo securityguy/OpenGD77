@@ -6,8 +6,8 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#ifndef _USB_DEVICE_CONFIG_H_
-#define _USB_DEVICE_CONFIG_H_
+#ifndef _OPENGD77_USB_DEVICE_CONFIG_H_
+#define _OPENGD77_USB_DEVICE_CONFIG_H_
 
 /*******************************************************************************
 * Definitions
@@ -154,4 +154,4 @@
 
 /* @} */
 
-#endif /* _USB_DEVICE_CONFIG_H_ */
+#endif /* _OPENGD77_USB_DEVICE_CONFIG_H_ */

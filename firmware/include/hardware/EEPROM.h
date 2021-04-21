@@ -16,15 +16,15 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _EEPROM_H_
-#define _EEPROM_H_
+#ifndef _OPENGD77_EEPROM_H_
+#define _OPENGD77_EEPROM_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
-#include "i2c.h"
 #include <stdbool.h>
+#include <FreeRTOS.h>
+#include <task.h>
+#include "interfaces/i2c.h"
 
 bool EEPROM_Read(int address,uint8_t *buf, int size);
 bool EEPROM_Write(int address,uint8_t *buf, int size);
 
-#endif /* _EEPROM_H_ */
+#endif /* _OPENGD77_EEPROM_H_ */

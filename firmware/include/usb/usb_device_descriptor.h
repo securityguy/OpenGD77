@@ -5,8 +5,8 @@
  *
  * SPDX-License-Identifier: BSD-3-Clause
  */
-#ifndef _USB_DEVICE_DESCRIPTOR_H_
-#define _USB_DEVICE_DESCRIPTOR_H_ 1
+#ifndef _OPENGD77_USB_DEVICE_DESCRIPTOR_H_
+#define _OPENGD77_USB_DEVICE_DESCRIPTOR_H_
 
 /*******************************************************************************
 * Definitions
@@ -199,4 +199,4 @@ usb_status_t USB_DeviceGetStringDescriptor(usb_device_handle handle, usb_device_
  */
 extern usb_status_t USB_DeviceGetConfigurationDescriptor(usb_device_handle handle, usb_device_get_configuration_descriptor_struct_t *configurationDescriptor);
 
-#endif /* _USB_DEVICE_DESCRIPTOR_H_ */
+#endif /* _OPENGD77_USB_DEVICE_DESCRIPTOR_H_ */

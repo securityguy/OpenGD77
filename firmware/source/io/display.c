@@ -18,18 +18,16 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <display.h>
-#include <hardware/UC1701.h>
-#include <settings.h>
-#include "FreeRTOS.h"
-#include <gpio.h>
+#include <FreeRTOS.h>
+#include "io/display.h"
+#include "hardware/UC1701.h"
+#include "functions/settings.h"
+#include "interfaces/gpio.h"
 
 
 void displayInit(bool isInverseColour)
 {
 #if ! defined(PLATFORM_GD77S)
-
-	gpioInitDisplay();
 
 	// Init pins
 	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 1);

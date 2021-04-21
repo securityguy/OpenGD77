@@ -15,18 +15,21 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <ticks.h>
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiUtilities.h>
-#include <user_interface/uiLocalisation.h>
+#include "functions/ticks.h"
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiUtilities.h"
+#include "user_interface/uiLocalisation.h"
 
-//static const int LAST_HEARD_NUM_LINES_ON_DISPLAY = 3;
+static const int DISPLAYED_LINES_MAX = 3;
+
 static bool displayLHDetails = false;
-static menuStatus_t menuLastHeardExitCode = MENU_STATUS_SUCCESS;
-uint32_t selectedID;
+static menuStatus_t menuLastHeardExitCode;
+static LinkItem_t *selectedItem;
+static int lastHeardCount;
+static int firstDisplayed;
 
-static void handleEvent(uiEvent_t *ev);
-static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_t now, uint32_t TGorPC, size_t maxLen, bool displayDetails, bool itemIsSelected, bool isFirstRun);
+static void displayTalkerAlias(uint8_t y, char *text, uint32_t time, uint32_t now, uint32_t TGorPC, size_t maxLen, bool displayDetails, bool itemIsSelected, bool isFirstRun);
+static void promptsInit(bool isFirstRun);
 
 menuStatus_t menuLastHeard(uiEvent_t *ev, bool isFirstRun)
 {
@@ -34,34 +37,52 @@ menuStatus_t menuLastHeard(uiEvent_t *ev, bool isFirstRun)
 
 	if (isFirstRun)
 	{
-		gMenusStartIndex = LinkHead->id;// reuse this global to store the ID of the first item in the list
-		displayLHDetails = false;
-		displayLightTrigger();
-		gMenusCurrentItemIndex = 0;
-
-		menuLastHeardUpdateScreen(true, displayLHDetails,true);
+		menuLastHeardInit();
+		menuLastHeardUpdateScreen(true, displayLHDetails, true);
 		m = ev->time;
-		return (MENU_STATUS_LIST_TYPE | MENU_STATUS_SUCCESS);
+
+		return (menuLastHeardExitCode | (uiDataGlobal.lastHeardCount ? MENU_STATUS_LIST_TYPE : 0));
 	}
 	else
 	{
+		bool headHasChanged = (menuDataGlobal.startIndex != LinkHead->id);
+
 		menuLastHeardExitCode = MENU_STATUS_SUCCESS;
 
 		// do live update by checking if the item at the top of the list has changed
-		if ((gMenusStartIndex != LinkHead->id) || (menuDisplayQSODataState == QSO_DISPLAY_CALLER_DATA))
+		if (headHasChanged || (uiDataGlobal.displayQSOState == QSO_DISPLAY_CALLER_DATA))
 		{
-			displayLightTrigger();
-			gMenusStartIndex = LinkHead->id;
-			if (gMenusCurrentItemIndex == 0)
+			bool backlightOn = false;
+
+			// the LH list has grown
+			if (lastHeardCount != uiDataGlobal.lastHeardCount)
 			{
-				menuLastHeardUpdateScreen(true, displayLHDetails,false);
+				backlightOn = true;
+				lastHeardCount = uiDataGlobal.lastHeardCount;
 			}
+			else
+			{
+				// Do not turn the backlight ON on caller data updates
+				if (headHasChanged)
+				{
+					backlightOn = true;
+				}
+			}
+
+			menuDataGlobal.startIndex = LinkHead->id;
+
+			if (backlightOn)
+			{
+				displayLightTrigger(false);
+			}
+
+			menuLastHeardUpdateScreen(true, displayLHDetails, false);
 		}
 
 		if (ev->hasEvent)
 		{
 			m = ev->time;
-			handleEvent(ev);
+			menuLastHeardHandleEvent(ev);
 		}
 		else
 		{
@@ -69,21 +90,28 @@ menuStatus_t menuLastHeard(uiEvent_t *ev, bool isFirstRun)
 			if (displayLHDetails && ((ev->time - m) > (1000U * 60U)))
 			{
 				m = ev->time;
-				menuLastHeardUpdateScreen(true, true,false);
+				menuLastHeardUpdateScreen(true, displayLHDetails, false);
 			}
 		}
 
 	}
+
 	return menuLastHeardExitCode;
 }
 
 void menuLastHeardUpdateScreen(bool showTitleOrHeader, bool displayDetails, bool isFirstRun)
 {
-	dmrIdDataStruct_t foundRecord;
 	int numDisplayed = 0;
 	LinkItem_t *item = LinkHead;
 	uint32_t now = fw_millis();
 	bool invertColour;
+	bool displayTA;
+
+	// Jumping here from <SK2> + 3, with an empty heard list won't announce "Last Heard", handle this here
+	if (isFirstRun && (uiDataGlobal.lastHeardCount == 0) && (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1))
+	{
+		promptsInit(isFirstRun);
+	}
 
 	ucClearBuf();
 	if (showTitleOrHeader)
@@ -92,144 +120,248 @@ void menuLastHeardUpdateScreen(bool showTitleOrHeader, bool displayDetails, bool
 	}
 	else
 	{
-		menuUtilityRenderHeader();
+		uiUtilityRenderHeader(false);
 	}
 
-	// skip over the first gMenusCurrentItemIndex in the listing
-	for(int i = 0; i < gMenusCurrentItemIndex; i++)
+	// skip over the first menuDataGlobal.currentItemIndex in the listing
+	for(int i = 0; i < firstDisplayed; i++)
 	{
 		item = item->next;
 	}
 
-	while((item != NULL) && (item->id != 0) && (numDisplayed < 4))
+	if (uiDataGlobal.lastHeardCount > 0)
 	{
-		if (numDisplayed == 0)
+		while((item != NULL) && (item->id != 0) && (numDisplayed < DISPLAYED_LINES_MAX))
 		{
-			invertColour = true;
-#if defined(PLATFORM_RD5R)
-			ucFillRect(0, 15, 128, 10, false);
-#else
-			ucFillRect(0, 16, 128, 16, false);
-#endif
-			selectedID = item->id;
-		}
-		else
-		{
-			invertColour = false;
-		}
+			displayTA = false;
 
-		if (dmrIDLookup(item->id, &foundRecord))
-		{
-			menuLastHeardDisplayTA(16 + (numDisplayed * MENU_ENTRY_HEIGHT), foundRecord.text, item->time, now, item->talkGroupOrPcId, 20, displayDetails,invertColour, isFirstRun);
-		}
-		else
-		{
-			if (item->talkerAlias[0] != 0x00)
+			if (menuDataGlobal.currentItemIndex == (firstDisplayed + numDisplayed))
 			{
-				menuLastHeardDisplayTA(16 + (numDisplayed * MENU_ENTRY_HEIGHT), item->talkerAlias, item->time, now, item->talkGroupOrPcId, 32, displayDetails,invertColour, isFirstRun);
+				invertColour = true;
+				ucFillRect(0, 16 + (numDisplayed * MENU_ENTRY_HEIGHT), DISPLAY_SIZE_X, MENU_ENTRY_HEIGHT, false);
+				selectedItem = item;
 			}
 			else
 			{
-				char buffer[17];
-
-				snprintf(buffer, 17, "ID:%d", item->id);
-				buffer[16] = 0;
-				menuLastHeardDisplayTA(16 + (numDisplayed * MENU_ENTRY_HEIGHT), buffer, item->time, now, item->talkGroupOrPcId, 17, displayDetails,invertColour, isFirstRun);
+				invertColour = false;
 			}
-		}
 
-		numDisplayed++;
+			switch (nonVolatileSettings.contactDisplayPriority)
+			{
+				case CONTACT_DISPLAY_PRIO_CC_DB_TA:
+				case CONTACT_DISPLAY_PRIO_DB_CC_TA:
+					// No contact found in codeplug and DMRIDs, use TA as fallback, if any.
+					if ((strncmp(item->contact, "ID:", 3) == 0) && (item->talkerAlias[0] != 0x00))
+					{
+						displayTA = true;
+					}
+					break;
+				case CONTACT_DISPLAY_PRIO_TA_CC_DB:
+				case CONTACT_DISPLAY_PRIO_TA_DB_CC:
+					if (item->talkerAlias[0] != 0x00)
+					{
+						displayTA = true;
+					}
+					break;
+			}
 
-		item = item->next;
-	}
-	ucRender();
-	menuDisplayQSODataState = QSO_DISPLAY_IDLE;
-}
+			if (displayTA)
+			{
+				displayTalkerAlias(16 + (numDisplayed * MENU_ENTRY_HEIGHT) + LH_ENTRY_V_OFFSET, item->talkerAlias, item->time, now, item->talkGroupOrPcId, 32, displayDetails, invertColour, isFirstRun);
+			}
+			else
+			{
+				displayTalkerAlias(16 + (numDisplayed * MENU_ENTRY_HEIGHT) + LH_ENTRY_V_OFFSET, item->contact, item->time, now, item->talkGroupOrPcId, 21, displayDetails, invertColour, isFirstRun);
+			}
 
-static void handleEvent(uiEvent_t *ev)
-{
-	bool isDirty = false;
+			numDisplayed++;
 
-	displayLightTrigger();
-
-	if (ev->events & BUTTON_EVENT)
-	{
-		if (repeatVoicePromptOnSK1(ev))
-		{
-			return;
-		}
-	}
-
-	if (KEYCHECK_PRESS(ev->keys, KEY_DOWN))
-	{
-		if (gMenusCurrentItemIndex < (numLastHeard - 1))
-		{
-			isDirty = true;
-			gMenusCurrentItemIndex++;
-			menuLastHeardExitCode |= MENU_STATUS_LIST_TYPE;
-		}
-	}
-	else if (KEYCHECK_PRESS(ev->keys, KEY_UP))
-	{
-		if (gMenusCurrentItemIndex > 0)
-		{
-			isDirty = true;
-			gMenusCurrentItemIndex--;
-			menuLastHeardExitCode |= MENU_STATUS_LIST_TYPE;
-		}
-	}
-	else if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
-	{
-		menuSystemPopPreviousMenu();
-		return;
-	}
-	else if (KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
-	{
-		setOverrideTGorPC(selectedID, true);
-		announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC,PROMPT_THRESHOLD_3);
-		menuSystemPopAllAndDisplayRootMenu();
-		return;
-	}
-
-	// Toggles LH simple/details view on SK2 press
-	if (!displayLHDetails && BUTTONCHECK_DOWN(ev, BUTTON_SK2))
-	{
-		isDirty = true;
-		displayLHDetails = true;
-	}
-	if (displayLHDetails && (ev->events == BUTTON_EVENT) &&  !(ev->buttons & BUTTON_SK2))
-	{
-		isDirty = true;
-		displayLHDetails = false;
-	}
-
-	if (isDirty)
-	{
-		menuLastHeardUpdateScreen(true, displayLHDetails, false);// This will also setup the voice prompt
-
-		if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
-		{
-			voicePromptsPlay();
+			item = item->next;
 		}
 	}
 	else
 	{
-		if (BUTTONCHECK_SHORTUP(ev, BUTTON_SK1))
+		promptsPlayNotAfterTx();
+	}
+
+	ucRender();
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_IDLE;
+}
+
+void menuLastHeardHandleEvent(uiEvent_t *ev)
+{
+	bool isDirty = false;
+	int currentMenu = menuSystemGetCurrentMenuNumber();
+
+	if (currentMenu == MENU_LAST_HEARD)
+	{
+		if (ev->events & BUTTON_EVENT)
 		{
-			if (!voicePromptsIsPlaying())
+			if (repeatVoicePromptOnSK1(ev))
+			{
+				return;
+			}
+		}
+	}
+
+	if (uiDataGlobal.lastHeardCount > 0)
+	{
+		if (KEYCHECK_SHORTUP(ev->keys, KEY_DOWN) && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0))
+		{
+			if (menuDataGlobal.currentItemIndex < (uiDataGlobal.lastHeardCount - 1))
+			{
+				isDirty = true;
+				menuDataGlobal.currentItemIndex++;
+
+				if (menuDataGlobal.currentItemIndex >= DISPLAYED_LINES_MAX)
+				{
+					if (((menuDataGlobal.currentItemIndex - DISPLAYED_LINES_MAX) == firstDisplayed) &&
+							(menuDataGlobal.currentItemIndex <= (uiDataGlobal.lastHeardCount - 1)))
+					{
+						firstDisplayed++;
+					}
+				}
+			}
+
+			if (menuDataGlobal.currentItemIndex == 0)
+			{
+				menuLastHeardExitCode |= MENU_STATUS_LIST_TYPE;
+			}
+		}
+		else if (KEYCHECK_SHORTUP(ev->keys, KEY_DOWN) && BUTTONCHECK_DOWN(ev, BUTTON_SK2))
+		{
+			isDirty = true;
+			menuDataGlobal.currentItemIndex = (uiDataGlobal.lastHeardCount - 1);
+			firstDisplayed = SAFE_MAX((menuDataGlobal.currentItemIndex - (DISPLAYED_LINES_MAX - 1)), 0);
+
+			if (menuDataGlobal.currentItemIndex == 0)
+			{
+				menuLastHeardExitCode |= MENU_STATUS_LIST_TYPE;
+			}
+		}
+		else if (KEYCHECK_SHORTUP(ev->keys, KEY_UP) && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0))
+		{
+			if (menuDataGlobal.currentItemIndex > 0)
+			{
+				isDirty = true;
+				menuDataGlobal.currentItemIndex--;
+
+				if (firstDisplayed && (menuDataGlobal.currentItemIndex < firstDisplayed))
+				{
+					firstDisplayed--;
+				}
+			}
+
+			if (menuDataGlobal.currentItemIndex == 0)
+			{
+				menuLastHeardExitCode |= MENU_STATUS_LIST_TYPE;
+			}
+		}
+		else if (KEYCHECK_SHORTUP(ev->keys, KEY_UP) && BUTTONCHECK_DOWN(ev, BUTTON_SK2))
+		{
+			menuDataGlobal.currentItemIndex = 0;
+			isDirty = true;
+			firstDisplayed = 0;
+			menuLastHeardExitCode |= MENU_STATUS_LIST_TYPE;
+		}
+		else if ((currentMenu == MENU_LAST_HEARD) && KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
+		{
+			int timeslot = selectedItem->receivedTS;
+
+			setOverrideTGorPC(selectedItem->id, true);
+
+			if ((timeslot != -1) && (timeslot != trxGetDMRTimeSlot()))
+			{
+				trxSetDMRTimeSlot(timeslot);
+				tsSetManualOverride(((menuSystemGetRootMenuNumber() == UI_CHANNEL_MODE) ? CHANNEL_CHANNEL : (CHANNEL_VFO_A + nonVolatileSettings.currentVFONumber)), (timeslot + 1));
+			}
+			announceItem(PROMPT_SEQUENCE_CONTACT_TG_OR_PC, PROMPT_THRESHOLD_3);
+			menuSystemPopAllAndDisplayRootMenu();
+			return;
+		}
+	}
+
+	if (currentMenu == MENU_LAST_HEARD)
+	{
+		if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
+		{
+			menuSystemPopPreviousMenu();
+			return;
+		}
+		else if (KEYCHECK_SHORTUP_NUMBER(ev->keys) && (BUTTONCHECK_DOWN(ev, BUTTON_SK2)))
+		{
+			saveQuickkeyMenuIndex(ev->keys.key, menuSystemGetCurrentMenuNumber(), 0, 0);
+			return;
+		}
+
+		// Toggles LH simple/details view on SK2 long press
+		if (!displayLHDetails && BUTTONCHECK_LONGDOWN(ev, BUTTON_SK2))
+		{
+			isDirty = true;
+			displayLHDetails = true;
+		}
+		else if (displayLHDetails && (BUTTONCHECK_DOWN(ev, BUTTON_SK2) == 0))
+		{
+			isDirty = true;
+			displayLHDetails = false;
+		}
+
+		if (isDirty)
+		{
+			menuLastHeardUpdateScreen(true, displayLHDetails, false);// This will also setup the voice prompt
+
+			if (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1)
 			{
 				voicePromptsPlay();
 			}
-			else
-			{
-				voicePromptsTerminate();
-			}
-			return;
+		}
+	}
+	else
+	{
+		if (isDirty)
+		{
+			menuLastHeardUpdateScreen(false, false, false);
 		}
 	}
 }
 
-static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_t now, uint32_t TGorPC, size_t maxLen, bool displayDetails, bool itemIsSelected, bool isFirstRun)
+void menuLastHeardInit(void)
+{
+	menuDataGlobal.startIndex = LinkHead->id;// reuse this global to store the ID of the first item in the list
+	menuDataGlobal.currentItemIndex = 0;
+	menuDataGlobal.endIndex = uiDataGlobal.lastHeardCount;
+	selectedItem = NULL;
+	firstDisplayed = 0;
+	displayLHDetails = false;
+	lastHeardCount = uiDataGlobal.lastHeardCount;
+	menuLastHeardExitCode = MENU_STATUS_SUCCESS;
+}
+
+static void promptsInit(bool isFirstRun)
+{
+	if (voicePromptsIsPlaying())
+	{
+		voicePromptsTerminate();
+	}
+
+	voicePromptsInit();
+	if (isFirstRun)
+	{
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendLanguageString(&currentLanguage->last_heard);
+		voicePromptsAppendLanguageString(&currentLanguage->menu);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+
+		if (uiDataGlobal.lastHeardCount == 0)
+		{
+			voicePromptsAppendLanguageString(&currentLanguage->empty_list);
+		}
+	}
+}
+
+static void displayTalkerAlias(uint8_t y, char *text, uint32_t time, uint32_t now, uint32_t TGorPC, size_t maxLen, bool displayDetails, bool itemIsSelected, bool isFirstRun)
 {
 	char buffer[37]; // Max: TA 27 (in 7bit format) + ' [' + 6 (Maidenhead)  + ']' + NULL
 	char tg_Buffer[17];
@@ -239,28 +371,12 @@ static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_
 
 	// Do TG and Time stuff first as its always needed for the Voice prompts
 
-	snprintf(tg_Buffer, 17,"%s %u", (isPC ? "PC" : "TG"), tg);// PC or TG
-	tg_Buffer[16] = 0;
-	snprintf(timeBuffer, 5, "%d", (((now - time) / 1000U) / 60U));// Time
-	timeBuffer[5] = 0;
+	snprintf(tg_Buffer, 17, "%s %u", (isPC ? currentLanguage->pc : currentLanguage->tg), tg);// PC or TG
+	snprintf(timeBuffer, 6, "%d", (((now - time) / 1000U) / 60U));// Time
 
-	if (itemIsSelected)
+	if (itemIsSelected && (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1))
 	{
-		if (voicePromptsIsPlaying())
-		{
-			voicePromptsTerminate();
-		}
-
-		voicePromptsInit();
-		if (isFirstRun)
-		{
-			voicePromptsAppendPrompt(PROMPT_SILENCE);
-			voicePromptsAppendPrompt(PROMPT_SILENCE);
-			voicePromptsAppendLanguageString(&currentLanguage->last_heard);
-			voicePromptsAppendLanguageString(&currentLanguage->menu);
-			voicePromptsAppendPrompt(PROMPT_SILENCE);
-			voicePromptsAppendPrompt(PROMPT_SILENCE);
-		}
+		promptsInit(isFirstRun);
 	}
 
 	if (!displayDetails) // search for callsign + first name
@@ -305,7 +421,6 @@ static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_
 						nameBuf[npos] = 0;
 
 						snprintf(outputBuf, 17, "%s %s", chomp(buffer), chomp(nameBuf));
-						outputBuf[16] = 0;
 
 						ucPrintCore(0,y, chomp(outputBuf), FONT_SIZE_3,TEXT_ALIGN_CENTER, itemIsSelected);
 					}
@@ -319,7 +434,6 @@ static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_
 						nameBuf[16] = 0;
 
 						snprintf(outputBuf, 17, "%s %s", chomp(buffer), chomp(nameBuf));
-						outputBuf[16] = 0;
 
 						ucPrintCore(0,y, chomp(outputBuf), FONT_SIZE_3,TEXT_ALIGN_CENTER, itemIsSelected);
 					}
@@ -347,7 +461,7 @@ static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_
 			voicePromptsAppendString(chomp(buffer));
 			voicePromptsAppendString("  ");
 
-			snprintf(buffer,37,"%d ",tg);
+			snprintf(buffer, 37, "%d ", tg);
 			if (isPC)
 			{
 				voicePromptsAppendLanguageString(&currentLanguage->private_call);
@@ -364,6 +478,7 @@ static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_
 
 			voicePromptsAppendString(timeBuffer);
 			voicePromptsAppendPrompt(PROMPT_MINUTES);
+			voicePromptsAppendString("   ");// Add some blank sound at the end of the callsign, to allow time for follow-on scrolling
 		}
 	}
 	else
@@ -380,6 +495,6 @@ static void menuLastHeardDisplayTA(uint8_t y, char *text, uint32_t time, uint32_
 
 	if (isFirstRun)
 	{
-		voicePromptsPlay();
+		promptsPlayNotAfterTx();
 	}
 }

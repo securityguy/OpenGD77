@@ -15,15 +15,16 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <codeplug.h>
-#include <main.h>
-#include <settings.h>
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiUtilities.h>
-#include <user_interface/uiLocalisation.h>
+#include "functions/codeplug.h"
+#include "main.h"
+#include "functions/settings.h"
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiUtilities.h"
+#include "user_interface/uiLocalisation.h"
 
 static void updateScreen(bool isFirstRun);
 static void handleEvent(uiEvent_t *ev);
+static void setZoneToUserSelection(void);
 
 static menuStatus_t menuZoneExitCode = MENU_STATUS_SUCCESS;
 
@@ -31,8 +32,8 @@ menuStatus_t menuZoneList(uiEvent_t *ev, bool isFirstRun)
 {
 	if (isFirstRun)
 	{
-		gMenusEndIndex = codeplugZonesGetCount();
-		gMenusCurrentItemIndex = nonVolatileSettings.currentZone;
+		menuDataGlobal.endIndex = codeplugZonesGetCount();
+		menuDataGlobal.currentItemIndex = nonVolatileSettings.currentZone;
 
 		voicePromptsInit();
 		voicePromptsAppendLanguageString(&currentLanguage->zone);
@@ -64,12 +65,12 @@ static void updateScreen(bool isFirstRun)
 
 	for(int i = -1; i <= 1; i++)
 	{
-		if (gMenusEndIndex <= (i + 1))
+		if (menuDataGlobal.endIndex <= (i + 1))
 		{
 			break;
 		}
 
-		mNum = menuGetMenuOffset(gMenusEndIndex, i);
+		mNum = menuGetMenuOffset(menuDataGlobal.endIndex, i);
 
 		codeplugZoneGetDataForNumber(mNum, &zoneBuf);
 		codeplugUtilConvertBufToString(zoneBuf.name, nameBuf, 16);// need to convert to zero terminated string
@@ -92,18 +93,15 @@ static void updateScreen(bool isFirstRun)
 				voicePromptsAppendString(nameBuf);
 			}
 
-			voicePromptsPlay();
+			promptsPlayNotAfterTx();
 		}
 	}
 
 	ucRender();
-	displayLightTrigger();
 }
 
 static void handleEvent(uiEvent_t *ev)
 {
-	displayLightTrigger();
-
 	if (ev->events & BUTTON_EVENT)
 	{
 		if (repeatVoicePromptOnSK1(ev))
@@ -112,30 +110,33 @@ static void handleEvent(uiEvent_t *ev)
 		}
 	}
 
+	if (ev->events & FUNCTION_EVENT)
+	{
+		if ((QUICKKEY_TYPE(ev->function) == QUICKKEY_MENU) && (QUICKKEY_LONGENTRYID(ev->function) > 0) && (QUICKKEY_LONGENTRYID(ev->function) <= menuDataGlobal.endIndex))
+		{
+			menuDataGlobal.currentItemIndex = QUICKKEY_LONGENTRYID(ev->function)-1;
+			setZoneToUserSelection();
+		}
+		return;
+	}
+
+
 	if (KEYCHECK_PRESS(ev->keys, KEY_DOWN))
 	{
-		menuSystemMenuIncrement(&gMenusCurrentItemIndex, gMenusEndIndex);
+		menuSystemMenuIncrement(&menuDataGlobal.currentItemIndex, menuDataGlobal.endIndex);
 		updateScreen(false);
 		menuZoneExitCode |= MENU_STATUS_LIST_TYPE;
 	}
 	else if (KEYCHECK_PRESS(ev->keys, KEY_UP))
 	{
-		menuSystemMenuDecrement(&gMenusCurrentItemIndex, gMenusEndIndex);
+		menuSystemMenuDecrement(&menuDataGlobal.currentItemIndex, menuDataGlobal.endIndex);
 		updateScreen(false);
 		menuZoneExitCode |= MENU_STATUS_LIST_TYPE;
 	}
 	else if (KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
 	{
-		settingsSet(nonVolatileSettings.overrideTG, 0); // remove any TG override
-		settingsSet(nonVolatileSettings.currentZone, gMenusCurrentItemIndex);
-		settingsSet(nonVolatileSettings.currentChannelIndexInZone , 0);// Since we are switching zones the channel index should be reset
-		settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 0);// Since we are switching zones the TRx Group index should be reset
-		channelScreenChannelData.rxFreq = 0x00; // Flag to the Channel screen that the channel data is now invalid and needs to be reloaded
 
-		settingsSaveIfNeeded(true);
-		menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
-		menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen redraw
-
+		setZoneToUserSelection();
 		return;
 	}
 	else if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
@@ -143,4 +144,23 @@ static void handleEvent(uiEvent_t *ev)
 		menuSystemPopPreviousMenu();
 		return;
 	}
+	else if (KEYCHECK_SHORTUP_NUMBER(ev->keys) && BUTTONCHECK_DOWN(ev, BUTTON_SK2))
+	{
+		saveQuickkeyMenuLongValue(ev->keys.key, menuSystemGetCurrentMenuNumber(), menuDataGlobal.currentItemIndex + 1);
+		return;
+	}
+}
+
+
+static void setZoneToUserSelection(void)
+{
+	settingsSet(nonVolatileSettings.overrideTG, 0); // remove any TG override
+	settingsSet(nonVolatileSettings.currentZone, (int16_t) menuDataGlobal.currentItemIndex);
+	settingsSet(nonVolatileSettings.currentChannelIndexInZone , 0);// Since we are switching zones the channel index should be reset
+	settingsSet(nonVolatileSettings.currentIndexInTRxGroupList[SETTINGS_CHANNEL_MODE], 0);// Since we are switching zones the TRx Group index should be reset
+	channelScreenChannelData.rxFreq = 0x00; // Flag to the Channel screen that the channel data is now invalid and needs to be reloaded
+
+	settingsSaveIfNeeded(true);
+	menuSystemPopAllAndDisplaySpecificRootMenu(UI_CHANNEL_MODE, true);
+	uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN; // Force screen redraw
 }

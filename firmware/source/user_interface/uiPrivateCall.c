@@ -15,89 +15,86 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiLocalisation.h>
-#include <user_interface/uiUtilities.h>
-#include <settings.h>
-#include <ticks.h>
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiLocalisation.h"
+#include "user_interface/uiUtilities.h"
+#include "functions/settings.h"
+#include "functions/ticks.h"
 
-static void updateScreen(void);
-static void handleEvent(uiEvent_t *ev);
-
-int uiPrivateCallState = NOT_IN_CALL;
-int uiPrivateCallLastID;
+static bool privateCallCallback(void);
+static bool handled = false;
 
 menuStatus_t menuPrivateCall(uiEvent_t *ev, bool isFirstRun)
 {
 	if (isFirstRun)
 	{
-		soundSetMelody(MELODY_PRIVATE_CALL);
-		uiPrivateCallState = PRIVATE_CALL_ACCEPT;
-		menuUtilityReceivedPcId = LinkHead->id;
+		static const int bufferLen = 17;
+		char buffer[bufferLen];
+		dmrIdDataStruct_t currentRec;
 
-		displayLightTrigger();
-		updateScreen();
-	}
-	else
-	{
-		if (ev->hasEvent)
+		// privateCallCallback() has been called, so this screen is
+		// reloading, but we need to leave it ASAP
+		if (handled)
 		{
-			handleEvent(ev);
+			handled = false;
+			keyboardReset();
+			menuSystemPopPreviousMenu();
+			return MENU_STATUS_SUCCESS;
 		}
+
+		soundSetMelody(MELODY_PRIVATE_CALL);
+		uiDataGlobal.PrivateCall.state = PRIVATE_CALL_ACCEPT;
+		uiDataGlobal.receivedPcId = LinkHead->id;
+		uiDataGlobal.receivedPcTS = (dmrMonitorCapturedTS != -1) ? dmrMonitorCapturedTS : trxGetDMRTimeSlot();
+
+		if (!contactIDLookup(uiDataGlobal.receivedPcId, CONTACT_CALLTYPE_PC, buffer))
+		{
+			dmrIDLookup(uiDataGlobal.receivedPcId, &currentRec);
+			strncpy(buffer, currentRec.text, 16);
+			buffer[16] = 0;
+		}
+
+		snprintf(uiDataGlobal.MessageBox.message, MESSAGEBOX_MESSAGE_LEN_MAX, "%s\n%s\n%s",
+		currentLanguage->private_call, currentLanguage->accept_call, buffer);
+		uiDataGlobal.MessageBox.type = MESSAGEBOX_TYPE_INFO;
+		uiDataGlobal.MessageBox.buttons = MESSAGEBOX_BUTTONS_YESNO;
+		uiDataGlobal.MessageBox.decoration = MESSAGEBOX_DECORATION_NONE;
+		uiDataGlobal.MessageBox.validatorCallback = privateCallCallback;
+
+		menuSystemPushNewMenu(UI_MESSAGE_BOX);
 	}
+
 	return MENU_STATUS_SUCCESS;
 }
 
-static void updateScreen(void)
+void menuPrivateCallClear(void)
 {
-	static const int bufferLen = 33; // displayChannelNameOrRxFrequency() use 6x8 font
-	char buffer[bufferLen];// buffer passed to the DMR ID lookup function, needs to be large enough to hold worst case text length that is returned. Currently 16+1
-	dmrIdDataStruct_t currentRec;
+	uiDataGlobal.PrivateCall.state = PRIVATE_CALL_NOT_IN_CALL;
+	uiDataGlobal.PrivateCall.lastID = 0;
+	uiDataGlobal.tgBeforePcMode = 0;
+	uiDataGlobal.receivedPcId = 0x00;
+}
 
-	ucClearBuf();
-	if (!contactIDLookup(menuUtilityReceivedPcId, CONTACT_CALLTYPE_PC, buffer))
+void menuPrivateCallDismiss(void)
+{
+	handled = true;
+	uiDataGlobal.MessageBox.validatorCallback = NULL;
+	menuSystemPopPreviousMenu();
+}
+
+static bool privateCallCallback(void)
+{
+	if (uiDataGlobal.MessageBox.keyPressed == KEY_RED)
 	{
-		dmrIDLookup(menuUtilityReceivedPcId, &currentRec);
-		strncpy(buffer, currentRec.text, 16);
-		buffer[16] = 0;
+		uiDataGlobal.PrivateCall.state = PRIVATE_CALL_DECLINED;
+		uiDataGlobal.PrivateCall.lastID = 0;
 	}
-	ucPrintCentered(32, buffer, FONT_SIZE_3);
-
-	ucPrintCentered(0, currentLanguage->private_call, FONT_SIZE_3);
-	ucPrintCentered(16, currentLanguage->accept_call, FONT_SIZE_3);
-	ucDrawChoice(CHOICE_YESNO, false);
-	ucRender();
-
-}
-
-static void handleEvent(uiEvent_t *ev)
-{
-	displayLightTrigger();
-
-	if (ev->events & KEY_EVENT)
+	else if (uiDataGlobal.MessageBox.keyPressed == KEY_GREEN)
 	{
-		if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
-		{
-			uiPrivateCallState = PRIVATE_CALL_DECLINED;
-			uiPrivateCallLastID = 0;
-			menuSystemPopPreviousMenu();
-			return;
-		}
-		else if (KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
-		{
-			acceptPrivateCall(menuUtilityReceivedPcId);
-			menuSystemPopPreviousMenu();
-			return;
-		}
+		acceptPrivateCall(uiDataGlobal.receivedPcId, uiDataGlobal.receivedPcTS);
 	}
+
+	handled = true;
+
+	return true;
 }
-
-void menuClearPrivateCall(void )
-{
-	uiPrivateCallState = NOT_IN_CALL;
-	uiPrivateCallLastID = 0;
-	menuUtilityTgBeforePcMode = 0;
-	menuUtilityReceivedPcId = 0;
-}
-
-

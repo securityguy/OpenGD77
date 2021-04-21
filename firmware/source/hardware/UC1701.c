@@ -20,11 +20,16 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <display.h>
-#include <hardware/UC1701.h>
-#include <hardware/UC1701_charset.h>
-#include <settings.h>
-#include <user_interface/uiLocalisation.h>
+#include "io/display.h"
+#include "hardware/UC1701.h"
+#if defined(LANGUAGE_BUILD_JAPANESE)
+#include "hardware/UC1701_charset_JA.h"
+#else
+#include "hardware/UC1701_charset.h"
+#endif
+#include "functions/settings.h"
+#include "user_interface/uiLocalisation.h"
+#include "utils.h"
 
 // number representing the maximum angle (e.g. if 100, then if you pass in start=0 and end=50, you get a half circle)
 // this can be changed with setArcParams function at runtime
@@ -36,7 +41,6 @@ static float _arcAngleMax = DEFAULT_ARC_ANGLE_MAX;
 static float _angleOffset = DEFAULT_ANGLE_OFFSET;
 #define DEG_TO_RAD  0.017453292519943295769236907684886
 #define RAD_TO_DEG 57.295779513082320876798154814105
-#define swap(x, y) do { typeof(x) t = x; x = y; y = t; } while(0)
 
 
 __attribute__((section(".data.$RAM2"))) uint8_t screenBuf[1024];
@@ -82,7 +86,7 @@ static inline bool checkWritePos(uint8_t * writePos)
 {
 	if (writePos < screenBuf || writePos > screenBufEnd)
 	{
-#if defined(USE_SEGGER_RTT)
+#if defined(USING_EXTERNAL_DEBUGGER)
 		SEGGER_RTT_printf(0,"Display buffer error\n");
 #endif
 		return false;
@@ -278,7 +282,7 @@ void ucClearRows(int16_t startRow, int16_t endRow, bool isInverted)
 
 	if (endRow < startRow)
 	{
-		swap(startRow, endRow);
+		SAFE_SWAP(startRow, endRow);
 	}
 
 	// memset would be faster than ucFillRect
@@ -291,7 +295,7 @@ void ucPrintCentered(uint8_t y,const char *text, ucFont_t fontSize)
 	ucPrintCore(0, y, text, fontSize, TEXT_ALIGN_CENTER, false);
 }
 
-void ucPrintAt(uint8_t x, uint8_t y,const char *text, ucFont_t fontSize)
+void ucPrintAt(uint8_t x, uint8_t y, const char *text, ucFont_t fontSize)
 {
 	ucPrintCore(x, y, text, fontSize, TEXT_ALIGN_LEFT, false);
 }
@@ -303,14 +307,14 @@ void ucDrawLine(int16_t x0, int16_t y0, int16_t x1, int16_t y1, bool color)
 
 	if (steep)
 	{
-		swap(x0, y0);
-		swap(x1, y1);
+		SAFE_SWAP(x0, y0);
+		SAFE_SWAP(x1, y1);
 	}
 
 	if (x0 > x1)
 	{
-		swap(x0, x1);
-		swap(y0, y1);
+		SAFE_SWAP(x0, x1);
+		SAFE_SWAP(y0, y1);
 	}
 
 	int16_t dx, dy;
@@ -736,15 +740,15 @@ void ucFillTriangle ( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2
 	// Sort coordinates by Y order (y2 >= y1 >= y0)
 	if (y0 > y1)
 	{
-		swap(y0, y1); swap(x0, x1);
+		SAFE_SWAP(y0, y1); SAFE_SWAP(x0, x1);
 	}
 	if (y1 > y2)
 	{
-		swap(y2, y1); swap(x2, x1);
+		SAFE_SWAP(y2, y1); SAFE_SWAP(x2, x1);
 	}
 	if (y0 > y1)
 	{
-		swap(y0, y1); swap(x0, x1);
+		SAFE_SWAP(y0, y1); SAFE_SWAP(x0, x1);
 	}
 
 	if(y0 == y2) // Handle awkward all-on-same-line case as its own thing
@@ -788,7 +792,9 @@ void ucFillTriangle ( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2
 		b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
 		*/
 		if(a > b)
-			swap(a,b);
+		{
+			SAFE_SWAP(a,b);
+		}
 
 		ucDrawFastHLine(a, y, b - a + 1, color);
 	}
@@ -809,7 +815,9 @@ void ucFillTriangle ( int16_t x0, int16_t y0, int16_t x1, int16_t y1, int16_t x2
 		b = x0 + (x2 - x0) * (y - y0) / (y2 - y0);
 		*/
 		if(a > b)
-			swap(a,b);
+		{
+			SAFE_SWAP(a,b);
+		}
 
 		ucDrawFastHLine(a, y, b - a + 1, color);
 	}
@@ -877,10 +885,10 @@ void ucFillRect(int16_t x, int16_t y, int16_t width, int16_t height, bool isInve
 	uint8_t bitPatten;
 	int16_t shiftNum;
 
-	if (startRow==endRow)
+	if (startRow == endRow)
 	{
 		addPtr = screenBuf + (startRow << 7);
-		bitPatten = (0xff >> (8-(height & 0x07))) << (y & 0x07);
+		bitPatten = (0xff >> (8 - (height & 0x07))) << (y & 0x07);
 		//bitPatten = bitPatten ;
 		for(int16_t stripe = x; stripe < endStripe; stripe++)
 		{
@@ -1009,10 +1017,25 @@ void ucDrawChoice(ucChoice_t choice, bool clearRegion)
 	{
 			{ "OK" 							             , NULL                                        }, // UC1701_CHOICE_OK
 			{ (char *)currentLanguage->yes___in_uppercase, (char *)currentLanguage->no___in_uppercase  }, // UC1701_CHOICE_YESNO
-			{ NULL						                 , (char *)currentLanguage->DISMISS            }  // UC1701_CHOICE_DISMISS
+			{ NULL						                 , (char *)currentLanguage->DISMISS            },  // UC1701_CHOICE_DISMISS
+			{ "OK" 							             , NULL                                        }  // UC1701_CHOICE_OKARROWS
 	};
 	char *lText = NULL;
 	char *rText = NULL;
+
+
+	const int ucTriangleArrows[2][6] = {
+			{ // Down
+					(DISPLAY_SIZE_X/2)-12, (TEXT_Y + (FONT_SIZE_3_HEIGHT / 2) - 1),
+					(DISPLAY_SIZE_X/2)-4, (TEXT_Y + (FONT_SIZE_3_HEIGHT / 2) - (FONT_SIZE_3_HEIGHT / 4) - 1),
+					(DISPLAY_SIZE_X/2)-4, (TEXT_Y + (FONT_SIZE_3_HEIGHT / 2) + (FONT_SIZE_3_HEIGHT / 4) - 1)
+			}, // Up
+			{
+					(DISPLAY_SIZE_X/2)+4, (TEXT_Y + (FONT_SIZE_3_HEIGHT / 2) + (FONT_SIZE_3_HEIGHT / 4) - 1),
+					(DISPLAY_SIZE_X/2)+4, (TEXT_Y + (FONT_SIZE_3_HEIGHT / 2) - (FONT_SIZE_3_HEIGHT / 4) - 1),
+					(DISPLAY_SIZE_X/2)+12, (TEXT_Y + (FONT_SIZE_3_HEIGHT / 2) - 1)
+			}
+	};
 
 
 	if (clearRegion)
@@ -1049,6 +1072,16 @@ void ucDrawChoice(ucChoice_t choice, bool clearRegion)
 			x = (126 - len);
 		}
 		ucPrintAt(x, TEXT_Y, rText, FONT_SIZE_3);
+	}
+
+	if (choice == CHOICES_OKARROWS)
+	{
+		ucFillTriangle(ucTriangleArrows[0][0], ucTriangleArrows[0][1],
+					   ucTriangleArrows[0][2], ucTriangleArrows[0][3],
+					   ucTriangleArrows[0][4], ucTriangleArrows[0][5], true);
+		ucFillTriangle(ucTriangleArrows[1][0], ucTriangleArrows[1][1],
+					   ucTriangleArrows[1][2], ucTriangleArrows[1][3],
+					   ucTriangleArrows[1][4], ucTriangleArrows[1][5], true);
 	}
 }
 

@@ -18,18 +18,21 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/dmrDefines.h>
-#include <HR-C6000.h>
-#include <settings.h>
-#if defined(USE_SEGGER_RTT)
-#include <SeggerRTT/RTT/SEGGER_RTT.h>
+#include "hotspot/dmrDefines.h"
+#include "hardware/HR-C6000.h"
+#include "functions/settings.h"
+#if defined(USING_EXTERNAL_DEBUGGER)
+#include "SeggerRTT/RTT/SEGGER_RTT.h"
 #endif
-#include <trx.h>
-#include <hotspot/uiHotspot.h>
-#include <user_interface/uiUtilities.h>
-#include <functions/voicePrompts.h>
-#include <gpio.h>
-#include <interrupts.h>
+#include "functions/trx.h"
+#include "hotspot/uiHotspot.h"
+#include "user_interface/uiUtilities.h"
+#include "functions/voicePrompts.h"
+#include "interfaces/gpio.h"
+#include "interfaces/interrupts.h"
+
+
+static const int QSO_TIMER_TIMEOUT              = 2400;
 
 
 static const int SYS_INT_SEND_REQUEST_REJECTED  = 0x80;
@@ -53,7 +56,10 @@ const uint8_t SILENCE_AUDIO[27] = {	0xB9U, 0xE8U, 0x81U, 0x52U, 0x61U, 0x73U, 0x
 
 
 // GD-77 FW V3.1.1 data from 0x76010 / length 0x06
-static const uint8_t spi_init_values_1[] = { 0xd5, 0xd7, 0xf7, 0x7f, 0xd7, 0x57 };
+static const uint8_t MS_sync_pattern[] = { 0xd5, 0xd7, 0xf7, 0x7f, 0xd7, 0x57 };          //Mobile Station Sync Pattern for voice calls Repeater or Simplex
+//static const uint8_t TDMA1_sync_pattern[] = { 0xf7, 0xfd, 0xd5, 0xdd, 0xfd, 0x55 };       //TDMA1 Sync Pattern for voice calls TDMA Simplex
+//static const uint8_t TDMA2_sync_pattern[] = { 0xd7, 0x55, 0x7f, 0x5f, 0xf7, 0xf5 };      //TDMA2 Sync Pattern for voice calls TDMA Simplex
+
 // GD-77 FW V3.1.1 data from 0x75F70 / length 0x20
 static const uint8_t spi_init_values_2[] = { 0x69, 0x69, 0x96, 0x96, 0x96, 0x99, 0x99, 0x99, 0xa5, 0xa5, 0xaa, 0xaa, 0xcc, 0xcc, 0x00, 0xf0, 0x01, 0xff, 0x01, 0x0f, 0x00, 0x00, 0x00, 0x00, 0x10, 0x70, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 // GD-77 FW V3.1.1 data from 0x75F90 / length 0x10
@@ -65,8 +71,133 @@ static const uint8_t spi_init_values_5[] = { 0x00, 0x00, 0xeb, 0x78, 0x67 };
 // GD-77 FW V3.1.1 data from 0x75FB0 / length 0x60
 static const uint8_t spi_init_values_6[] = { 0x32, 0xef, 0x00, 0x31, 0xef, 0x00, 0x12, 0xef, 0x00, 0x13, 0xef, 0x00, 0x14, 0xef, 0x00, 0x15, 0xef, 0x00, 0x16, 0xef, 0x00, 0x17, 0xef, 0x00, 0x18, 0xef, 0x00, 0x19, 0xef, 0x00, 0x1a, 0xef, 0x00, 0x1b, 0xef, 0x00, 0x1c, 0xef, 0x00, 0x1d, 0xef, 0x00, 0x1e, 0xef, 0x00, 0x1f, 0xef, 0x00, 0x20, 0xef, 0x00, 0x21, 0xef, 0x00, 0x22, 0xef, 0x00, 0x23, 0xef, 0x00, 0x24, 0xef, 0x00, 0x25, 0xef, 0x00, 0x26, 0xef, 0x00, 0x27, 0xef, 0x00, 0x28, 0xef, 0x00, 0x29, 0xef, 0x00, 0x2a, 0xef, 0x00, 0x2b, 0xef, 0x00, 0x2c, 0xef, 0x00, 0x2d, 0xef, 0x00, 0x2e, 0xef, 0x00, 0x2f, 0xef, 0x00 };
 
+static const uint8_t spiInitReg0x04_PLL[4][2] = { {0x0B,0x40},//Set PLL M Register
+												{0x0C,0x32},//Set PLL Dividers
+												{0xB9,0x05},// ??
+												{0x0A,0x01}};//Set Clock Source Enable CLKOUT Pin
+
+static const uint8_t spiInitReg0x04MultiInit[57][2] = {
+	{0x00, 0x00},   //Clear all Reset Bits which forces a reset of all internal systems
+	{0x10, 0x6E},   //Set DMR,Tier2,Timeslot Mode, Layer 2, Repeater, Aligned, Slot1
+	{0x11, 0x80},   //Set LocalChanMode to Default Value
+	{0x13, 0x00},   //Zero Cend_Band Timing advance
+	{0x1F, 0x10},   //Set LocalEMB  DMR Colour code in upper 4 bits - defaulted to 1, and is updated elsewhere in the code
+	{0x20, 0x00},   //Set LocalAccessPolicy to Impolite
+	{0x21, 0xA0},   //Set LocalAccessPolicy1 to Polite to Color Code  (unsure why there are two registers for this)
+	{0x22, 0x26},   //Start Vocoder Decode, I2S mode
+	{0x22, 0x86},   //Start Vocoder Encode, I2S mode
+	{0x25, 0x0E},   //Undocumented Register
+	{0x26, 0x7D},   //Undocumented Register
+	{0x27, 0x40},   //Undocumented Register
+	{0x28, 0x7D},   //Undocumented Register
+	{0x29, 0x40},   //Undocumented Register
+	{0x2A, 0x0B},   //Set spi_clk_cnt to default value
+	{0x2B, 0x0B},   //According to Datasheet this is a Read only register For FM Squelch
+	{0x2C, 0x17},   //According to Datasheet this is a Read only register For FM Squelch
+	{0x2D, 0x05},   //Set FM Compression and Decompression points (?)
+	{0x2E, 0x04},   //Set tx_pre_on (DMR Transmission advance) to 400us
+	{0x2F, 0x0B},   //Set I2S Clock Frequency
+	{0x32, 0x02},   //Set LRCK_CNT_H CODEC Operating Frequency to default value
+	{0x33, 0xFF},   //Set LRCK_CNT_L CODEC Operating Frequency to default value
+	{0x34, 0xF0},   //Set FM Filters on and bandwidth to 12.5Khz
+	{0x35, 0x28},   //Set FM Modulation Coefficient
+	{0x3E, 0x28},   //Set FM Modulation Offset
+	{0x3F, 0x10},   //Set FM Modulation Limiter
+	{0x36, 0x00},   //Enable all clocks
+	{0x37, 0x00},   //Set mcu_control_shift to default. (codec under HRC-6000 control)
+	{0x4B, 0x1B},   //Set Data packet types to defaults
+	{0x4C, 0x00},   //Set Data packet types to defaults
+	{0x56, 0x00}, 	//Undocumented Register
+	{0x5F, 0xF0},  //G4EML Enable Sync detection for MS, BS , TDMA1 or TDMA2 originated signals (Was originally 0xC0)
+	{0x81, 0xFF}, 	//Enable all Interrupts
+	{0xD1, 0xC4},   //According to Datasheet this register is for FM DTMF (?)
+
+	// --- start subroutine spi_init_daten_senden_sub()
+	{0x01, 0x70}, 	//set 2 point Mod, swap receive I and Q, receive mode IF (?)    (Presumably changed elsewhere)
+	{0x03, 0x00},   //zero Receive I Offset
+	{0x05, 0x00},   //Zero Receive Q Offset
+	{0x12, 0x15}, 	//Set rf_pre_on Receive to transmit switching advance
+	{0xA1, 0x80}, 	//According to Datasheet this register is for FM Modulation Setting (?)
+	{0xC0, 0x0A},   //Set RF Signal Advance to 1ms (10x100us)
+	{0x06, 0x21},   //Use SPI vocoder under MCU control
+	{0x07, 0x0B},   //Set IF Frequency H to default 450KHz
+	{0x08, 0xB8},   //Set IF Frequency M to default 450KHz
+	{0x09, 0x00},   //Set IF Frequency L to default 450KHz
+	{0x0D, 0x10},   //Set Voice Superframe timeout value
+	{0x0E, 0x8E},   //Register Documented as Reserved
+	{0x0F, 0xB8},   //FSK Error Count
+	{0xC2, 0x00},   //Disable Mic Gain AGC
+	{0xE0, 0x8B},   //CODEC under MCU Control, LineOut2 Enabled, Mic_p Enabled, I2S Slave Mode
+	{0xE1, 0x0F},   //Undocumented Register (Probably associated with CODEC)
+	{0xE2, 0x06},   //CODEC  Anti Pop Enabled, DAC Output Enabled
+	{0xE3, 0x52},   //CODEC Default Settings
+	{0xE4, 0x4A},   //CODEC   LineOut Gain 2dB, Mic Stage 1 Gain 0dB, Mic Stage 2 Gain 30dB
+	{0xE5, 0x1A},   //CODEC Default Setting
+	// --- end subroutine spi_init_daten_senden_sub()
+
+	{0x40, 0xC3},  	//Enable DMR Tx, DMR Rx, Passive Timing, Normal mode
+	{0x41, 0x40},   //Receive during next timeslot
+	{0x37, 0x9E},
+};
+
+static const uint8_t spiInitReg0x04_PostInitBlock1[8][2] = {
+	{0x04, 0xE8},  //Set Mod2 output offset
+	{0x46, 0x37},  //Set Mod1 Amplitude
+	{0x48, 0x03},  //Set 2 Point Mod Bias
+	{0x47, 0xE8},  //Set 2 Point Mod Bias
+	{0x41, 0x20},  //set sync fail bit (reset?)
+	{0x40, 0x03},  //Disable DMR Tx and Rx
+	{0x41, 0x00},  //Reset all bits.
+	{0x00, 0x3F},  //Reset DMR Protocol and Physical layer modules.
+};
+
+static const uint8_t spiInitReg0x04_PostInitBlock2[42][2] =  {
+	{0x10, 0x6E},  //Set DMR, Tier2, Timeslot mode, Layer2, Repeater, Aligned, Slot 1
+	{0x1F, 0x10},  // Set Local EMB. DMR Colour code in upper 4 bits - defaulted to 1, and is updated elsewhere in the code
+	{0x26, 0x7D},  //Undocumented Register
+	{0x27, 0x40},  //Undocumented Register
+	{0x28, 0x7D},  //Undocumented Register
+	{0x29, 0x40},  //Undocumented Register
+	{0x2A, 0x0B},  //Set SPI Clock to default value
+	{0x2B, 0x0B},  //According to Datasheet this is a Read only register For FM Squelch
+	{0x2C, 0x17},  //According to Datasheet this is a Read only register For FM Squelch
+	{0x2D, 0x05},  //Set FM Compression and Decompression points (?)
+	{0x56, 0x00},  //Undocumented Register
+	{0x5F, 0xF0},  //G4EML Enable Sync detection for MS, BS , TDMA1 or TDMA2 originated signals (Was Originally 0xC0)
+	{0x81, 0xFF},  //Enable all Interrupts
+	{0x01, 0x70},  //Set 2 Point Mod, Swap Rx I and Q, Rx Mode IF
+	{0x03, 0x00},  //Zero Receive I Offset
+	{0x05, 0x00},  //Zero Receive Q Offset
+	{0x12, 0x15},  //Set RF Switching Receive to Transmit Advance
+	{0xA1, 0x80},  //According to Datasheet this register is for FM Modulation Setting (?)
+	{0xC0, 0x0A},  //Set RF Signal Advance to 1ms (10x100us)
+	{0x06, 0x21},  //Use SPI vocoder under MCU control
+	{0x07, 0x0B},  //Set IF Frequency H to default 450KHz
+	{0x08, 0xB8},  //Set IF Frequency M to default 450KHz
+	{0x09, 0x00},  //Set IF Frequency l to default 450KHz
+	{0x0D, 0x10},  //Set Voice Superframe timeout value
+	{0x0E, 0x8E},  //Register Documented as Reserved
+	{0x0F, 0xB8},  //FSK Error Count
+	{0xC2, 0x00},  //Disable Mic Gain AGC
+	{0xE0, 0x8B},  //CODEC under MCU Control, LineOut2 Enabled, Mic_p Enabled, I2S Slave Mode
+	{0xE1, 0x0F},  //Undocumented Register (Probably associated with CODEC)
+	{0xE2, 0x06},  //CODEC  Anti Pop Enabled, DAC Output Enabled
+	{0xE3, 0x52},  //CODEC Default Settings
+	{0xE5, 0x1A},  //CODEC Default Setting
+	{0x26, 0x7D},  //Undocumented Register
+	{0x27, 0x40},  //Undocumented Register
+	{0x28, 0x7D},  //Undocumented Register
+	{0x29, 0x40},  //Undocumented Register
+	{0x41, 0x20},  //Set Sync Fail Bit  (Reset?)
+	{0x40, 0xC3},  //Enable DMR Tx and Rx, Passive Timing
+	{0x41, 0x40},  //Set Receive During Next Slot Bit
+	{0x01, 0x70},  //Set 2 Point Mod, Swap Rx I and Q, Rx Mode IF
+	{0x10, 0x6E},  //Set DMR, Tier2, Timeslot mode, Layer2, Repeater, Aligned, Slot 1
+	{0x00, 0x3F},  //Reset DMR Protocol and Physical layer modules.
+};
 
 static volatile uint8_t reg_0x51;
+static volatile uint8_t reg_0x5F;
 static volatile uint8_t reg_0x82;
 static volatile uint8_t reg_0x84;
 static volatile uint8_t reg_0x86;
@@ -74,13 +205,22 @@ static volatile uint8_t reg_0x90;
 static volatile uint8_t reg_0x98;
 
 volatile bool hasEncodedAudio = false;
-volatile bool hotspotDMRTxFrameBufferEmpty = false;
+volatile bool rxCRCisValid = false;
+volatile bool hotspotDMRTxFrameBufferEmpty = true;
 volatile bool hotspotDMRRxFrameBufferAvailable = false;
 
 volatile uint8_t DMR_frame_buffer[DMR_FRAME_BUFFER_SIZE];
-volatile uint8_t deferredUpdateBuffer[DMR_FRAME_BUFFER_SIZE];
+uint8_t deferredUpdateBuffer[DMR_FRAME_BUFFER_SIZE*6];
 volatile bool deferredBufferAvailable = false;
+volatile uint8_t *deferredUpdateBufferOutPtr = deferredUpdateBuffer;
+volatile uint8_t *deferredUpdateBufferInPtr = deferredUpdateBuffer;
 
+const int NUM_AMBE_BLOCK_PER_DMR_FRAME = 3;
+const int NUM_AMBE_BUFFERS = 2;
+const int AMBE_AUDIO_LENGTH = 27;
+const int LENGTH_AMBE_BLOCK = 9;
+const uint8_t *deferredUpdateBufferEnd = (uint8_t *)deferredUpdateBuffer + (AMBE_AUDIO_LENGTH * NUM_AMBE_BUFFERS) -1;
+int ambeBufferCount = 0;
 
 static volatile int int_timeout;
 
@@ -90,7 +230,8 @@ volatile int slot_state;
 static volatile int tick_cnt;
 static volatile int skip_count;
 static volatile bool transitionToTX = false;
-static volatile int readDMRRSSI = 0;
+volatile uint32_t readDMRRSSI = 0;
+static int qsodata_timer = 0;
 
 
 static volatile int tx_sequence = 0;
@@ -122,6 +263,7 @@ static void HRC6000TransitionToTx(void);
 static void triggerQSOdataDisplay(void);
 
 enum RXSyncClass { SYNC_CLASS_HEADER = 0, SYNC_CLASS_VOICE = 1, SYNC_CLASS_DATA = 2, SYNC_CLASS_RC = 3};
+enum RXSyncType { MS_SYNC =0 , BS_SYNC =1 , TDMA1_SYNC = 2 , TDMA2_SYNC =3};
 
 static const int START_TICK_TIMEOUT = 20;
 static const int END_TICK_TIMEOUT 	= 13;
@@ -130,8 +272,17 @@ static volatile int lastRxColorCode = 0;
 static bool ccHold = true;
 static int ccHoldTimer = 0;
 static const int CCHOLDVALUE = 1000;			//1 second
+static int wakeTriesCount;
 
-void SPI_HR_C6000_init(void)
+static void writeSPIRegister0x04Multi(const uint8_t values[][2], uint8_t length)
+{
+	for(int i = 0; i < length; i++)
+	{
+		SPI0WritePageRegByte(0x04, values[i][0], values[i][1]);
+	}
+}
+
+void HRC6000_init(void)
 {
 	gpioInitC6000Interface();
 
@@ -144,79 +295,17 @@ void SPI_HR_C6000_init(void)
 	vTaskDelay(portTICK_PERIOD_MS * 10);
 
 	// --- start spi_init_daten_senden()
-	SPI0WritePageRegByte(0x04, 0x0b, 0x40);    //Set PLL M Register
-	SPI0WritePageRegByte(0x04, 0x0c, 0x32);    //Set PLL Dividers
-	SPI0WritePageRegByte(0x04, 0xb9, 0x05);
-	SPI0WritePageRegByte(0x04, 0x0a, 0x01);    //Set Clock Source Enable CLKOUT Pin
+	writeSPIRegister0x04Multi(spiInitReg0x04_PLL,4);
 
-	SPI0WritePageRegByteArray(0x01, 0x04, spi_init_values_1, 0x06);
+	SPI0WritePageRegByteArray(0x01, 0x04, MS_sync_pattern, 0x06);
 	SPI0WritePageRegByteArray(0x01, 0x10, spi_init_values_2, 0x20);
 	SPI0WritePageRegByteArray(0x01, 0x30, spi_init_values_3, 0x10);
 	SPI0WritePageRegByteArray(0x01, 0x40, spi_init_values_4, 0x07);
 	SPI0WritePageRegByteArray(0x01, 0x51, spi_init_values_5, 0x05);
 	SPI0WritePageRegByteArray(0x01, 0x60, spi_init_values_6, 0x60);
 
-	SPI0WritePageRegByte(0x04, 0x00, 0x00);   //Clear all Reset Bits which forces a reset of all internal systems
-	SPI0WritePageRegByte(0x04, 0x10, 0x6E);   //Set DMR,Tier2,Timeslot Mode, Layer 2, Repeater, Aligned, Slot1
-	SPI0WritePageRegByte(0x04, 0x11, 0x80);   //Set LocalChanMode to Default Value 
-	SPI0WritePageRegByte(0x04, 0x13, 0x00);   //Zero Cend_Band Timing advance
-	SPI0WritePageRegByte(0x04, 0x1F, 0x10);   //Set LocalEMB  DMR Colour code in upper 4 bits - defaulted to 1, and is updated elsewhere in the code
-	SPI0WritePageRegByte(0x04, 0x20, 0x00);   //Set LocalAccessPolicy to Impolite
-	SPI0WritePageRegByte(0x04, 0x21, 0xA0);   //Set LocalAccessPolicy1 to Polite to Color Code  (unsure why there are two registers for this)   
-	SPI0WritePageRegByte(0x04, 0x22, 0x26);   //Start Vocoder Decode, I2S mode
-	SPI0WritePageRegByte(0x04, 0x22, 0x86);   //Start Vocoder Encode, I2S mode
-	SPI0WritePageRegByte(0x04, 0x25, 0x0E);   //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x26, 0x7D);   //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x27, 0x40);   //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x28, 0x7D);   //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x29, 0x40);   //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x2A, 0x0B);   //Set spi_clk_cnt to default value
-	SPI0WritePageRegByte(0x04, 0x2B, 0x0B);   //According to Datasheet this is a Read only register For FM Squelch
-	SPI0WritePageRegByte(0x04, 0x2C, 0x17);   //According to Datasheet this is a Read only register For FM Squelch
-	SPI0WritePageRegByte(0x04, 0x2D, 0x05);   //Set FM Compression and Decompression points (?)
-	SPI0WritePageRegByte(0x04, 0x2E, 0x04);   //Set tx_pre_on (DMR Transmission advance) to 400us
-	SPI0WritePageRegByte(0x04, 0x2F, 0x0B);   //Set I2S Clock Frequency
-	SPI0WritePageRegByte(0x04, 0x32, 0x02);   //Set LRCK_CNT_H CODEC Operating Frequency to default value
-	SPI0WritePageRegByte(0x04, 0x33, 0xFF);   //Set LRCK_CNT_L CODEC Operating Frequency to default value
-	SPI0WritePageRegByte(0x04, 0x34, 0xF0);   //Set FM Filters on and bandwidth to 12.5Khz 
-	SPI0WritePageRegByte(0x04, 0x35, 0x28);   //Set FM Modulation Coefficient
-	SPI0WritePageRegByte(0x04, 0x3E, 0x28);   //Set FM Modulation Offset
-	SPI0WritePageRegByte(0x04, 0x3F, 0x10);   //Set FM Modulation Limiter
-	SPI0WritePageRegByte(0x04, 0x36, 0x00);   //Enable all clocks
-	SPI0WritePageRegByte(0x04, 0x37, 0x00);   //Set mcu_control_shift to default. (codec under HRC-6000 control)
-	SPI0WritePageRegByte(0x04, 0x4B, 0x1B);   //Set Data packet types to defaults
-	SPI0WritePageRegByte(0x04, 0x4C, 0x00);   //Set Data packet types to defaults
-	SPI0WritePageRegByte(0x04, 0x56, 0x00); 	//Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x5F, 0xC0); 	//Enable Sync detection for MS or BS orignated signals
-	SPI0WritePageRegByte(0x04, 0x81, 0xFF); 	//Enable all Interrupts
-	SPI0WritePageRegByte(0x04, 0xD1, 0xC4);   //According to Datasheet this register is for FM DTMF (?)
+	writeSPIRegister0x04Multi(spiInitReg0x04MultiInit,57);
 
-	// --- start subroutine spi_init_daten_senden_sub()
-	SPI0WritePageRegByte(0x04, 0x01, 0x70); 	//set 2 point Mod, swap receive I and Q, receive mode IF (?)    (Presumably changed elsewhere)
-	SPI0WritePageRegByte(0x04, 0x03, 0x00);   //zero Receive I Offset
-	SPI0WritePageRegByte(0x04, 0x05, 0x00);   //Zero Receive Q Offset
-	SPI0WritePageRegByte(0x04, 0x12, 0x15); 	//Set rf_pre_on Receive to transmit switching advance 
-	SPI0WritePageRegByte(0x04, 0xA1, 0x80); 	//According to Datasheet this register is for FM Modulation Setting (?)
-	SPI0WritePageRegByte(0x04, 0xC0, 0x0A);   //Set RF Signal Advance to 1ms (10x100us)
-	SPI0WritePageRegByte(0x04, 0x06, 0x21);   //Use SPI vocoder under MCU control
-	SPI0WritePageRegByte(0x04, 0x07, 0x0B);   //Set IF Frequency H to default 450KHz
-	SPI0WritePageRegByte(0x04, 0x08, 0xB8);   //Set IF Frequency M to default 450KHz
-	SPI0WritePageRegByte(0x04, 0x09, 0x00);   //Set IF Frequency L to default 450KHz
-	SPI0WritePageRegByte(0x04, 0x0D, 0x10);   //Set Voice Superframe timeout value
-	SPI0WritePageRegByte(0x04, 0x0E, 0x8E);   //Register Documented as Reserved 
-	SPI0WritePageRegByte(0x04, 0x0F, 0xB8);   //FSK Error Count
-	SPI0WritePageRegByte(0x04, 0xC2, 0x00);   //Disable Mic Gain AGC
-	SPI0WritePageRegByte(0x04, 0xE0, 0x8B);   //CODEC under MCU Control, LineOut2 Enabled, Mic_p Enabled, I2S Slave Mode
-	SPI0WritePageRegByte(0x04, 0xE1, 0x0F);   //Undocumented Register (Probably associated with CODEC)
-	SPI0WritePageRegByte(0x04, 0xE2, 0x06);   //CODEC  Anti Pop Enabled, DAC Output Enabled
-	SPI0WritePageRegByte(0x04, 0xE3, 0x52);   //CODEC Default Settings 
-	SPI0WritePageRegByte(0x04, 0xE4, 0x4A);   //CODEC   LineOut Gain 2dB, Mic Stage 1 Gain 0dB, Mic Stage 2 Gain 30dB
-	SPI0WritePageRegByte(0x04, 0xE5, 0x1A);   //CODEC Default Setting
-	// --- end subroutine spi_init_daten_senden_sub()
-
-	SPI0WritePageRegByte(0x04, 0x40, 0xC3);  	//Enable DMR Tx, DMR Rx, Passive Timing, Normal mode
-	SPI0WritePageRegByte(0x04, 0x41, 0x40);   //Receive during next timeslot
-	// --- end spi_init_daten_senden()
 
 	// ------ start spi_more_init
 	// --- start sub_1B5A4
@@ -224,81 +313,23 @@ void SPI_HR_C6000_init(void)
 	// --- end sub_1B5A4
 
 	// --- start sub_1B5DC
-	uint8_t spi_values[128];// hard coded 128 * 0xAA
-	for (int i = 0; i < 128; i++)
-	{
-		spi_values[i] = 0xaa;
-	}
-	SPI0WritePageRegByteArray(0x03, 0x00, spi_values, 0x80);
+	const int SIZE_OF_FILL_BUFFER = 96;// Original size was 128
+	uint8_t spi_values[SIZE_OF_FILL_BUFFER];
+	memset(spi_values, 0xAA, SIZE_OF_FILL_BUFFER);
+	SPI0WritePageRegByteArray(0x03, 0x00, spi_values, SIZE_OF_FILL_BUFFER);
 	// --- end sub_1B5DC
 
 	// --- start sub_1B5A4
 	SPI0SeClearPageRegByteWithMask(0x04, 0x06, 0xFD, 0x00); // CLEAR OpenMusic bit (play Boot sound and Call Prompts)
 	// --- end sub_1B5A4
 
-	SPI0WritePageRegByte(0x04, 0x37, 0x9E); // MCU take control of CODEC
-	SPI0SeClearPageRegByteWithMask(0x04, 0xE4, 0x3F, 0x00); // Set CODEC LineOut Gain to 0dB
-	// ------ end spi_more_init
 
-	dmrMonitorCapturedTimeout = nonVolatileSettings.dmrCaptureTimeout * 1000;
-}
-
-void SPI_C6000_postinit(void)
-{
-	SPI0WritePageRegByte(0x04, 0x04, 0xE8);  //Set Mod2 output offset
-	SPI0WritePageRegByte(0x04, 0x46, 0x37);  //Set Mod1 Amplitude
-	SPI0WritePageRegByte(0x04, 0x48, 0x03);  //Set 2 Point Mod Bias
-	SPI0WritePageRegByte(0x04, 0x47, 0xE8);  //Set 2 Point Mod Bias
-
-	SPI0WritePageRegByte(0x04, 0x41, 0x20);  //set sync fail bit (reset?)
-	SPI0WritePageRegByte(0x04, 0x40, 0x03);  //Disable DMR Tx and Rx
-	SPI0WritePageRegByte(0x04, 0x41, 0x00);  //Reset all bits.
-	SPI0WritePageRegByte(0x04, 0x00, 0x3F);  //Reset DMR Protocol and Physical layer modules.
-	SPI0WritePageRegByteArray(0x01, 0x04, spi_init_values_1, 0x06);
-	SPI0WritePageRegByte(0x04, 0x10, 0x6E);  //Set DMR, Tier2, Timeslot mode, Layer2, Repeater, Aligned, Slot 1
-	SPI0WritePageRegByte(0x04, 0x1F, 0x10);  // Set Local EMB. DMR Colour code in upper 4 bits - defaulted to 1, and is updated elsewhere in the code
-	SPI0WritePageRegByte(0x04, 0x26, 0x7D);  //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x27, 0x40);  //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x28, 0x7D);  //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x29, 0x40);  //Undocumented Register 
-	SPI0WritePageRegByte(0x04, 0x2A, 0x0B);  //Set SPI Clock to default value
-	SPI0WritePageRegByte(0x04, 0x2B, 0x0B);  //According to Datasheet this is a Read only register For FM Squelch
-	SPI0WritePageRegByte(0x04, 0x2C, 0x17);  //According to Datasheet this is a Read only register For FM Squelch
-	SPI0WritePageRegByte(0x04, 0x2D, 0x05);  //Set FM Compression and Decompression points (?)
-	SPI0WritePageRegByte(0x04, 0x56, 0x00);  //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x5F, 0xC0);  //Enable Sync detection for MS or BS orignated signals
-	SPI0WritePageRegByte(0x04, 0x81, 0xFF);  //Enable all Interrupts
-	SPI0WritePageRegByte(0x04, 0x01, 0x70);  //Set 2 Point Mod, Swap Rx I and Q, Rx Mode IF
-	SPI0WritePageRegByte(0x04, 0x03, 0x00);  //Zero Receive I Offset
-	SPI0WritePageRegByte(0x04, 0x05, 0x00);  //Zero Receive Q Offset
-	SPI0WritePageRegByte(0x04, 0x12, 0x15);  //Set RF Switching Receive to Transmit Advance
-	SPI0WritePageRegByte(0x04, 0xA1, 0x80);  //According to Datasheet this register is for FM Modulation Setting (?)
-	SPI0WritePageRegByte(0x04, 0xC0, 0x0A);  //Set RF Signal Advance to 1ms (10x100us)
-	SPI0WritePageRegByte(0x04, 0x06, 0x21);  //Use SPI vocoder under MCU control
-	SPI0WritePageRegByte(0x04, 0x07, 0x0B);  //Set IF Frequency H to default 450KHz
-	SPI0WritePageRegByte(0x04, 0x08, 0xB8);  //Set IF Frequency M to default 450KHz
-	SPI0WritePageRegByte(0x04, 0x09, 0x00);  //Set IF Frequency l to default 450KHz
-	SPI0WritePageRegByte(0x04, 0x0D, 0x10);  //Set Voice Superframe timeout value
-	SPI0WritePageRegByte(0x04, 0x0E, 0x8E);  //Register Documented as Reserved 
-	SPI0WritePageRegByte(0x04, 0x0F, 0xB8);  //FSK Error Count
-	SPI0WritePageRegByte(0x04, 0xC2, 0x00);  //Disable Mic Gain AGC
-	SPI0WritePageRegByte(0x04, 0xE0, 0x8B);  //CODEC under MCU Control, LineOut2 Enabled, Mic_p Enabled, I2S Slave Mode
-	SPI0WritePageRegByte(0x04, 0xE1, 0x0F);  //Undocumented Register (Probably associated with CODEC)
-	SPI0WritePageRegByte(0x04, 0xE2, 0x06);  //CODEC  Anti Pop Enabled, DAC Output Enabled
-	SPI0WritePageRegByte(0x04, 0xE3, 0x52);  //CODEC Default Settings
-
-	SPI0WritePageRegByte(0x04, 0xE5, 0x1A);  //CODEC Default Setting
-	SPI0WritePageRegByte(0x04, 0x26, 0x7D);  //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x27, 0x40);  //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x28, 0x7D);  //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x29, 0x40);  //Undocumented Register
-	SPI0WritePageRegByte(0x04, 0x41, 0x20);  //Set Sync Fail Bit  (Reset?)
-	SPI0WritePageRegByte(0x04, 0x40, 0xC3);  //Enable DMR Tx and Rx, Passive Timing
-	SPI0WritePageRegByte(0x04, 0x41, 0x40);  //Set Receive During Next Slot Bit
-	SPI0WritePageRegByte(0x04, 0x01, 0x70);  //Set 2 Point Mod, Swap Rx I and Q, Rx Mode IF
-	SPI0WritePageRegByte(0x04, 0x10, 0x6E);  //Set DMR, Tier2, Timeslot mode, Layer2, Repeater, Aligned, Slot 1
-	SPI0WritePageRegByte(0x04, 0x00, 0x3F);  //Reset DMR Protocol and Physical layer modules.
+	writeSPIRegister0x04Multi(spiInitReg0x04_PostInitBlock1,8);
+	SPI0WritePageRegByteArray(0x01, 0x04, MS_sync_pattern, 0x06);
+	writeSPIRegister0x04Multi(spiInitReg0x04_PostInitBlock2,42);
 	SPI0WritePageRegByte(0x04, 0xE4, 0xC0 + nonVolatileSettings.micGainDMR);  //CODEC   LineOut Gain 6dB, Mic Stage 1 Gain 0dB, Mic Stage 2 Gain default is 11 =  33dB
+
+	clearActiveDMRID();
 }
 
 void setMicGainDMR(uint8_t gain)
@@ -314,24 +345,30 @@ static inline bool checkTimeSlotFilter(void)
 	}
 	else
 	{
-		if (nonVolatileSettings.dmrCcTsFilter & 0x02)
+		if (nonVolatileSettings.dmrCcTsFilter & DMR_TS_FILTER_PATTERN)
 		{
-			return (timeCode == trxGetDMRTimeSlot());
+			int currentTS = trxGetDMRTimeSlot();
+
+			dmrMonitorCapturedTS = currentTS;
+			dmrMonitorCapturedTimeout = nonVolatileSettings.dmrCaptureTimeout * 1000;
+
+			return (timeCode == currentTS);
 		}
 		else
 		{
-			if ((dmrMonitorCapturedTS == -1) || (dmrMonitorCapturedTS == timeCode))
+			if (timeCode != -1)
 			{
-				dmrMonitorCapturedTS = timeCode;
-				dmrMonitorCapturedTimeout = nonVolatileSettings.dmrCaptureTimeout * 1000;
-				return true;
-			}
-			else
-			{
-				return false;
+				if ((tsLockCount > 4) && ((dmrMonitorCapturedTS == -1) || (dmrMonitorCapturedTS == timeCode)))
+				{
+					dmrMonitorCapturedTS = timeCode;
+					dmrMonitorCapturedTimeout = nonVolatileSettings.dmrCaptureTimeout * 1000;
+					return true;
+				}
 			}
 		}
 	}
+
+	return false;
 }
 
 bool checkTalkGroupFilter(void)
@@ -346,9 +383,11 @@ bool checkTalkGroupFilter(void)
 		case DMR_DESTINATION_FILTER_TG:
 			return ((trxTalkGroupOrPcId & 0x00FFFFFF) == receivedTgOrPcId);
 			break;
+
 		case DMR_DESTINATION_FILTER_DC:
 			return codeplugContactsContainsPC(receivedSrcId);
 			break;
+
 		case DMR_DESTINATION_FILTER_RXG:
 			{
 				for(int i = 0; i < currentRxGroupData.NOT_IN_CODEPLUG_numTGsInGroup; i++)
@@ -358,6 +397,7 @@ bool checkTalkGroupFilter(void)
 						return true;
 					}
 				}
+
 				return false;
 			}
 			break;
@@ -371,9 +411,7 @@ bool checkTalkGroupFilter(void)
 
 bool checkColourCodeFilter(void)
 {
-
 	return (rxColorCode == trxGetDMRColourCode());
-
 }
 
 void transmitTalkerAlias(void)
@@ -390,28 +428,28 @@ void transmitTalkerAlias(void)
 
 		switch(TAPhase / 2)
 		{
-		case 0:
-			taPosition 	= 3;
-			TA_LCBuf[2]= (0x01 << 6) | (strlen(talkAliasText) << 1);
-			taOffset	= 0;
-			taLength	= 6;
-			break;
-		case 1:
-			taOffset	= 6;
-			taLength	= 7;
-			break;
-		case 2:
-			taOffset	= 13;
-			taLength	= 7;
-			break;
-		case 3:
-			taOffset	= 20;
-			taLength	= 7;
-			break;
-		default:
-			taOffset	= 0;
-			taLength	= 0;
-			break;
+			case 0:
+				taPosition 	= 3;
+				TA_LCBuf[2]= (0x01 << 6) | (strlen(talkAliasText) << 1);
+				taOffset	= 0;
+				taLength	= 6;
+				break;
+			case 1:
+				taOffset	= 6;
+				taLength	= 7;
+				break;
+			case 2:
+				taOffset	= 13;
+				taLength	= 7;
+				break;
+			case 3:
+				taOffset	= 20;
+				taLength	= 7;
+				break;
+			default:
+				taOffset	= 0;
+				taLength	= 0;
+				break;
 		}
 
 		TA_LCBuf[0]= (TAPhase/2) + 0x04;
@@ -452,31 +490,8 @@ void PORTC_IRQHandler(void)
 		HRC6000TxInterruptHandler();
 		interruptsClearPinFlags(Port_INT_C6000_RF_TX, Pin_INT_C6000_RF_TX);
 	}
-/*
 
-    if ((1U << Pin_INT_C6000_SYS) & PORT_GetPinsInterruptFlags(Port_INT_C6000_SYS))
-    {
-    	HRC6000SysInterruptHandler();
-        PORT_ClearPinsInterruptFlags(Port_INT_C6000_SYS, (1U << Pin_INT_C6000_SYS));
-    }
-    if ((1U << Pin_INT_C6000_TS) & PORT_GetPinsInterruptFlags(Port_INT_C6000_TS))
-    {
-    	HRC6000TimeslotInterruptHandler();
-        PORT_ClearPinsInterruptFlags(Port_INT_C6000_TS, (1U << Pin_INT_C6000_TS));
-    }
-    if ((1U << Pin_INT_C6000_RF_RX) & PORT_GetPinsInterruptFlags(Port_INT_C6000_RF_RX))
-    {
-    	HRC6000RxInterruptHandler();
-        PORT_ClearPinsInterruptFlags(Port_INT_C6000_RF_RX, (1U << Pin_INT_C6000_RF_RX));
-    }
-    if ((1U << Pin_INT_C6000_RF_TX) & PORT_GetPinsInterruptFlags(Port_INT_C6000_RF_TX))
-    {
-    	HRC6000TxInterruptHandler();
-
-        PORT_ClearPinsInterruptFlags(Port_INT_C6000_RF_TX, (1U << Pin_INT_C6000_RF_TX));
-    }
-*/
-    int_timeout = 0;
+	int_timeout = 0;
 
     /* Add for ARM errata 838869, affects Cortex-M4, Cortex-M4F Store immediate overlapping
     exception return operation might vector to incorrect interrupt */
@@ -586,7 +601,7 @@ inline static void HRC6000SysPostAccessInt(void)
 	if (slot_state == DMR_STATE_IDLE)
 	{
 		codecInit();
-		GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+		LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
 
 		SPI0WritePageRegByte(0x04, 0x41, 0x50);     //Receive only in next timeslot
 		slot_state = DMR_STATE_RX_1;
@@ -621,9 +636,8 @@ inline static void HRC6000SysReceivedDataInt(void)
 	*/
 	int rxDataType;
 	int rxSyncClass;
-	bool rxCRCStatus;
 	int rpi;
-
+	int rxSyncType;
 
 	SPI0ReadPageRegByte(0x04, 0x51, &reg_0x51);
 
@@ -631,11 +645,24 @@ inline static void HRC6000SysReceivedDataInt(void)
 
 	rxDataType 	= (reg_0x51 >> 4) & 0x0f;//Data Type or Voice Frame sequence number
 	rxSyncClass = (reg_0x51 >> 0) & 0x03;//Received Sync Class  0=Sync Header 1=Voice 2=data 3=RC
-	rxCRCStatus = (((reg_0x51 >> 2) & 0x01) == 0);// CRC is OK if its 0
+	rxCRCisValid = (((reg_0x51 >> 2) & 0x01) == 0);// CRC is OK if its 0
 	rpi = (reg_0x51 >> 3) & 0x01;
 
+	SPI0ReadPageRegByte(0x04, 0x5f, &reg_0x5F);
+	rxSyncType=reg_0x5F & 0x03;                       //received Sync Type
 
-	if (((slot_state == DMR_STATE_RX_1) || (slot_state == DMR_STATE_RX_2)) && ((rpi != 0) || (rxCRCStatus != true) || !checkColourCodeFilter()))
+	if (rxSyncType==BS_SYNC)                                           // if we are receiving from a base station (Repeater)
+	{
+		trxDMRModeRx = DMR_MODE_RMO;                               // switch to RMO mode to allow reception
+	}
+	else
+	{
+		trxDMRModeRx = DMR_MODE_DMO;								   // not base station so must be DMO
+
+	}
+
+
+	if (((slot_state == DMR_STATE_RX_1) || (slot_state == DMR_STATE_RX_2)) && ((rpi != 0) || (rxCRCisValid != true) || !checkColourCodeFilter()))
 	{
 		// Something is not correct
 		return;
@@ -643,7 +670,7 @@ inline static void HRC6000SysReceivedDataInt(void)
 	tick_cnt = 0;
 
 	// Wait for the repeater to wakeup and count the number of frames where the Timecode (TS number) is toggling correctly
-	if (slot_state == DMR_STATE_REPEATER_WAKE_4)
+	if (slot_state == DMR_STATE_REPEATER_WAKE_3)
 	{
 		if (lastTimeCode != timeCode)
 		{
@@ -659,7 +686,7 @@ inline static void HRC6000SysReceivedDataInt(void)
 
 	if ((rxSyncClass == SYNC_CLASS_DATA) && (rxDataType == 2))        //Terminator with LC
 	{
-		if (trxDMRMode == DMR_MODE_ACTIVE && callAcceptFilter())
+		if ((trxDMRModeRx == DMR_MODE_DMO) && callAcceptFilter())
 		{
 			slot_state = DMR_STATE_RX_END;
 			trxIsTransmitting = false;
@@ -687,7 +714,7 @@ inline static void HRC6000SysReceivedDataInt(void)
 	}
 
 	// Check for correct received packet
-	if ((rxCRCStatus == true) && (rpi == 0) && (slot_state < DMR_STATE_TX_START_1))
+	if ((rxCRCisValid == true) && (rpi == 0) && (slot_state < DMR_STATE_TX_START_1))
 	{
 		// Start RX
 		if (slot_state == DMR_STATE_IDLE)
@@ -695,7 +722,7 @@ inline static void HRC6000SysReceivedDataInt(void)
 			if (checkColourCodeFilter())// Voice LC Header
 			{
 				codecInit();
-				GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+				LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
 
 				SPI0WritePageRegByte(0x04, 0x41, 0x50);     //Receive only in next timeslot
 				slot_state = DMR_STATE_RX_1;
@@ -721,16 +748,24 @@ inline static void HRC6000SysReceivedDataInt(void)
 
 			if (((skip_count == 0) || ((receivedSrcId != trxDMRID) && (receivedSrcId != 0x00))) &&
 			(rxSyncClass != SYNC_CLASS_DATA) && (sequenceNumber >= 0x01) && (sequenceNumber <= 0x06) &&
-			(((trxDMRMode == DMR_MODE_PASSIVE) && (checkTimeSlotFilter() && lastTimeCode != timeCode)) || ((trxDMRMode == DMR_MODE_ACTIVE) &&
+			(((trxDMRModeRx == DMR_MODE_RMO) && (checkTimeSlotFilter() && lastTimeCode != timeCode)) || ((trxDMRModeRx == DMR_MODE_DMO) &&
 			 (slot_state == DMR_STATE_RX_1))) && checkTalkGroupFilter() && checkColourCodeFilter())
 			{
 				ccHold = true;				//don't allow CC to change if we are receiving audio
-				enableAudioAmp(AUDIO_AMP_MODE_RF);
+
+				if((settingsUsbMode != USB_MODE_HOTSPOT) && ((getAudioAmpStatus() & AUDIO_AMP_MODE_RF) == 0) &&
+						(((trxDMRModeRx == DMR_MODE_RMO) && (tsLockCount > 4)) || (trxDMRModeRx == DMR_MODE_DMO)))
+				{
+					enableAudioAmp(AUDIO_AMP_MODE_RF);
+				}
+
 				if (sequenceNumber == 1)
 				{
 					triggerQSOdataDisplay();
 				}
+
 				SPI1ReadPageRegByteArray(0x03, 0x00, DMR_frame_buffer + 0x0C, 27);
+
 				if (settingsUsbMode == USB_MODE_HOTSPOT)
 				{
 					DMR_frame_buffer[27 + 0x0c] = HOTSPOT_RX_AUDIO_FRAME;
@@ -744,7 +779,11 @@ inline static void HRC6000SysReceivedDataInt(void)
 			}
 		}
 	}
-	lastTimeCode = timeCode;
+
+	if (timeCode != -1)
+	{
+		lastTimeCode = timeCode;
+	}
 }
 
 inline static void HRC6000SysReceivedInformationInt(void)
@@ -792,7 +831,7 @@ inline static void HRC6000SysInterruptHandler(void)
 			{
 				trxSetDMRColourCode(rxColorCode);
 			}
-		lastRxColorCode = rxColorCode;
+			lastRxColorCode = rxColorCode;
 		}
 
 		uint8_t LCBuf[12];
@@ -804,8 +843,7 @@ inline static void HRC6000SysInterruptHandler(void)
 			(memcmp((uint8_t *)previousLCBuf, LCBuf, 12) != 0))
 		{
 
-
-			if (((checkTimeSlotFilter() || (trxDMRMode == DMR_MODE_ACTIVE))) && checkColourCodeFilter()) // only do this for the selected timeslot, or when in Active mode
+			if (((checkTimeSlotFilter() || (trxDMRModeRx == DMR_MODE_DMO))) && checkColourCodeFilter()) // only do this for the selected timeslot, or when in Active mode
 			{
 				if ((LCBuf[0] == TG_CALL_FLAG) || (LCBuf[0] == PC_CALL_FLAG))
 				{
@@ -896,13 +934,13 @@ inline static void HRC6000SysInterruptHandler(void)
 	}
 
 	SPI0WritePageRegByte(0x04, 0x83, reg_0x82);  //Clear remaining Interrupt Flags
-	timer_hrc6000task=0;
+	timer_hrc6000task = 0;
 }
 
 static void HRC6000TransitionToTx(void)
 {
 	disableAudioAmp(AUDIO_AMP_MODE_RF);
-	GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+	LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 	codecInit();
 
 	SPI0WritePageRegByte(0x04, 0x21, 0xA2); // Set Polite to Color Code and Reset vocoder encodingbuffer
@@ -914,9 +952,9 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 {
 	uint8_t reg0x52;
 	SPI0ReadPageRegByte(0x04, 0x52, &reg0x52);  	//Read CACH Register to get the timecode (TS number)
-    receivedTimeCode = ((reg0x52 & 0x04) >> 2);				// extract the timecode from the CACH register
+	receivedTimeCode = ((reg0x52 & 0x04) >> 2);				// extract the timecode from the CACH register
 
-	if ((slot_state == DMR_STATE_REPEATER_WAKE_4) || (timeCode == -1))			//if we are waking up the repeater, or we don't currently have a valid value for the timecode
+	if ((slot_state == DMR_STATE_REPEATER_WAKE_3) || (timeCode == -1))			//if we are waking up the repeater, or we don't currently have a valid value for the timecode
 	{
 		tsLockCount = 0;
 		timeCode = receivedTimeCode;							//use the received TC directly from the CACH
@@ -924,10 +962,14 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 	else
 	{
 		timeCode = !timeCode;									//toggle the timecode.
-		if(timeCode == receivedTimeCode)						//if this agrees with the received version
+		if (timeCode == receivedTimeCode)						//if this agrees with the received version
 		{
-			tsLockCount++;
-			if(rxcnt > 0)							         //decrement the disagree count
+			if (tsLockCount < 5)
+			{
+				tsLockCount++;
+			}
+
+			if (rxcnt > 0)							         //decrement the disagree count
 			{
 				rxcnt--;
 			}
@@ -936,7 +978,8 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 		{
 			rxcnt++;										//count the number of disagrees.
 			tsLockCount--;
-			if(rxcnt > 3)										//if we have had four disagrees then re-sync.
+
+			if (rxcnt > 3)										//if we have had four disagrees then re-sync.
 			{
 				timeCode = receivedTimeCode;
 				rxcnt = 0;
@@ -946,26 +989,23 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 	}
 
 	// RX/TX state machine
+#if defined(USING_EXTERNAL_DEBUGGER) && defined(DEBUG_DMR)
+	SEGGER_RTT_printf(0, "state:%d\n",slot_state);
+#endif
 	switch (slot_state)
 	{
 		case DMR_STATE_RX_1: // Start RX (first step)
-			if (trxDMRMode == DMR_MODE_PASSIVE)
+			if (trxDMRModeRx == DMR_MODE_RMO)
 			{
 
 				if( !isWaking && trxTransmissionEnabled && !checkTimeSlotFilter() && (rxcnt == 0) && (tsLockCount > 4))
 				{
-						HRC6000TransitionToTx();
+					HRC6000TransitionToTx();
 				}
 				else
 				{
-					GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
-					readDMRRSSI = 15;// wait 15 ticks (of approximately 1mS) before reading the RSSI
-
-					// Note. The C6000 needs to be told what to do for the next timeslot each time.
-					// It no longer seems to receive if this line is removed.
-					// Though in the future this needs to be double checked. In case there is a way to get it to constantly receive.
-					//write_SPI_page_reg_byte_SPI0(0x04, 0x41, 0x50);     //Receive only in next timeslot
-					//slot_state = DMR_STATE_RX_1;// stay in state 1
+					LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+					readDMRRSSI = PITCounter + 150;// wait 15 ticks (of approximately 1mS) before reading the RSSI
 				}
 			}
 			else
@@ -973,88 +1013,76 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 				// When in Active (simplex) mode. We need to only receive on one of the 2 timeslots, otherwise we get random data for the other slot
 				// and this can sometimes be interpreted as valid data, which then screws things up.
 				SPI0WritePageRegByte(0x04, 0x41, 0x00);     //No Transmit or receive in next timeslot
-				readDMRRSSI = 15;// wait 15 ticks (of approximately 1mS) before reading the RSSI
+				readDMRRSSI = PITCounter + 150;// wait 15 ticks (of approximately 1mS) before reading the RSSI
 				slot_state = DMR_STATE_RX_2;
 			}
-
 			break;
+
 		case DMR_STATE_RX_2: // Start RX (second step)
 			SPI0WritePageRegByte(0x04, 0x41, 0x50);     //Receive only in next timeslot
 			slot_state = DMR_STATE_RX_1;
 			break;
+
 		case DMR_STATE_RX_END: // Stop RX
 			clearActiveDMRID();
 			init_digital_DMR_RX();
 			disableAudioAmp(AUDIO_AMP_MODE_RF);
-			GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
-			menuDisplayQSODataState= QSO_DISPLAY_DEFAULT_SCREEN;
+			LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			slot_state = DMR_STATE_IDLE;
 			trxIsTransmitting = false;
 			break;
+
 		case DMR_STATE_TX_START_1: // Start TX (second step)
-			GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 1);// for repeater wakeup
+			LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 1);// for repeater wakeup
 			setupPcOrTGHeader();
 			SPI0WritePageRegByte(0x04, 0x41, 0x80);    //Transmit during next Timeslot
 			SPI0WritePageRegByte(0x04, 0x50, 0x10);    //Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
 			trxIsTransmitting = true;
 			slot_state = DMR_STATE_TX_START_2;
 			break;
+
 		case DMR_STATE_TX_START_2: // Start TX (third step)
-			//write_SPI_page_reg_byte_SPI0(0x04, 0x41, 0x50); 	//Receive during next Timeslot (no Layer 2 Access)
 			SPI0WritePageRegByte(0x04, 0x41, 0x00); 	//Do nothing on the next TS
 			slot_state = DMR_STATE_TX_START_3;
 			break;
+
 		case DMR_STATE_TX_START_3: // Start TX (fourth step)
 			SPI0WritePageRegByte(0x04, 0x41, 0x80);     //Transmit during Next Timeslot
 			SPI0WritePageRegByte(0x04, 0x50, 0x10);     //Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
 			slot_state = DMR_STATE_TX_START_4;
 			break;
+
 		case DMR_STATE_TX_START_4: // Start TX (fifth step)
-			//write_SPI_page_reg_byte_SPI0(0x04, 0x41, 0x50); 	//Receive during Next Timeslot (no Layer 2 Access)
 			SPI0WritePageRegByte(0x04, 0x41, 0x00); 	//Do nothing on the next TS
-            if (settingsUsbMode != USB_MODE_HOTSPOT)
-            {
-            	/*
-            	 * At this time g_RX_SAI_in_use is false, so receive_sound_data will be called by tick_TXsoundbuffer
-
-            		tick_TXsoundbuffer();
-
-            		So we may as well just call receive_sound_data() directly
-            	*/
-
-            	/*
-            	 * This function server 2 purposes.
-            	 * 1. If the current spi_soundBuf buffer not null, the contents of the buffer are copied to the wavbuffer.
-            	 * And the I2S sampling is started again for the next sample.
-            	 * 2. If spi_soundBuf is null, no copy to the wave buffer occurs, and the I2S is started for the first time.
-            	 */
-            	soundReceiveData();
-            	//memcpy((uint8_t *)DMR_frame_buffer+0x0C,(uint8_t *)SILENCE_AUDIO, 27);// copy silence into the DMR audio
-            }
 			slot_state = DMR_STATE_TX_START_5;
+
+			if (settingsUsbMode != USB_MODE_HOTSPOT)
+			{
+				ambeBufferCount = 0;
+				deferredUpdateBufferOutPtr = deferredUpdateBuffer;
+				deferredUpdateBufferInPtr = deferredUpdateBuffer;
+				soundReceiveData();
+			}
 			break;
+
 		case DMR_STATE_TX_START_5: // Start TX (sixth step)
 			SPI0WritePageRegByte(0x04, 0x41, 0x80);   //Transmit during next Timeslot
 			SPI0WritePageRegByte(0x04, 0x50, 0x10);   //Set Data Type to 0001 (Voice LC Header), Data, LCSS=00
 			tx_sequence = 0;
-
 			TAPhase = 0;
-
 			slot_state = DMR_STATE_TX_1;
-
 			break;
 
 		case DMR_STATE_TX_1: // Ongoing TX (inactive timeslot)
+
+			SPI0WritePageRegByte(0x04, 0x41, 0x00);
 			if ((trxTransmissionEnabled == false) && (tx_sequence == 0))
 			{
-				//write_SPI_page_reg_byte_SPI0(0x04, 0x41, 0x50); // Receive during next Timeslot (no Layer 2 Access)
-				SPI0WritePageRegByte(0x04, 0x41, 0x00); 	//Do nothing on the next TS
 				slot_state = DMR_STATE_TX_END_1; // only exit here to ensure staying in the correct timeslot
 			}
 			else
 			{
-				//write_SPI_page_reg_byte_SPI0(0x04, 0x41, 0x50); // Receive during next Timeslot (no Layer 2 Access)
-				SPI0WritePageRegByte(0x04, 0x41, 0x00); 	//Do nothing on the next TS
 				slot_state = DMR_STATE_TX_2;
 			}
 			break;
@@ -1062,38 +1090,49 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 		case DMR_STATE_TX_2: // Ongoing TX (active timeslot)
 			if (trxTransmissionEnabled)
 			{
-                if (settingsUsbMode != USB_MODE_HOTSPOT)
-                {
-                	/*
-                	 * RC. In tick_TXsoundbuffer, it checks whether the I2S hardware global g_RX_SAI_in_use is true
-                	 * and and if so tick_TXsoundbuffer just returns. So we don't need to call it here at all, and the Tx audio still works.
-                	 * tick_TXsoundbuffer();
-                	 */
-    				//tick_codec_encode((uint8_t *)DMR_frame_buffer+0x0C);
+				if (settingsUsbMode != USB_MODE_HOTSPOT)
+				{
+					if (nonVolatileSettings.bitfieldOptions & BIT_TRANSMIT_TALKER_ALIAS)
+					{
+						if(tx_sequence == 0)
+						{
+							transmitTalkerAlias();
+						}
+					}
+					if (ambeBufferCount >= NUM_AMBE_BLOCK_PER_DMR_FRAME)
+					{
+						SPI1WritePageRegByteArray(0x03, 0x00, (uint8_t*)deferredUpdateBufferOutPtr, 27);// send the audio bytes to the hardware
+						deferredUpdateBufferOutPtr += 27;
 
-                	if (nonVolatileSettings.transmitTalkerAlias == true)
-                	{
-                		if(tx_sequence == 0)
-                		{
-                			transmitTalkerAlias();
-                		}
-                	}
-
-					SPI1WritePageRegByteArray(0x03, 0x00, (uint8_t*)deferredUpdateBuffer, 27);// send the audio bytes to the hardware
-					deferredBufferAvailable = false;
-                }
-                else
-                {
+						if (deferredUpdateBufferOutPtr > deferredUpdateBufferEnd)
+						{
+							deferredUpdateBufferOutPtr = deferredUpdateBuffer;
+						}
+						ambeBufferCount -= 3;
+					}
+					else
+					{
+						SPI1WritePageRegByteArray(0x03, 0x00, SILENCE_AUDIO, 27);// send the audio bytes to the hardware
+					}
+				}
+				else
+				{
 					if(tx_sequence == 0)
 					{
 						SPI0WritePageRegByteArray(0x02, 0x00, (uint8_t*)deferredUpdateBuffer, 0x0c);// put LC into hardware
 					}
-        			SPI1WritePageRegByteArray(0x03, 0x00, (uint8_t*)(deferredUpdateBuffer+0x0C), 27);// send the audio bytes to the hardware
 
-        			hotspotDMRTxFrameBufferEmpty = true;// we have finished with the current frame data from the hotspot
+					if (!hotspotDMRTxFrameBufferEmpty)
+					{
+						SPI1WritePageRegByteArray(0x03, 0x00, (uint8_t*)(deferredUpdateBuffer+0x0C), 27);// send the audio bytes to the hardware
+					}
+					else
+					{
+						SPI1WritePageRegByteArray(0x03, 0x00, SILENCE_AUDIO, 27);// send the audio bytes to the hardware
+					}
 
-                }
-
+					hotspotDMRTxFrameBufferEmpty = true;// we have finished with the current frame data from the hotspot
+				}
 			}
 			else
 			{
@@ -1113,7 +1152,7 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 			break;
 
 		case DMR_STATE_TX_END_1: // Stop TX (first step)
-			if (nonVolatileSettings.transmitTalkerAlias == true)
+			if (nonVolatileSettings.bitfieldOptions & BIT_TRANSMIT_TALKER_ALIAS)
 			{
 				setupPcOrTGHeader();
 			}
@@ -1122,48 +1161,54 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 			SPI0WritePageRegByte(0x04, 0x50, 0x20);  // Data Type =0010 (Terminator with LC), Data, LCSS=0
 			slot_state = DMR_STATE_TX_END_2;
 			break;
-		case DMR_STATE_TX_END_2: // Stop TX (second step)
 
+		case DMR_STATE_TX_END_2: // Stop TX (second step)
 			// Need to hold on this TS after Tx ends otherwise if DMR Mon TS filtering is disabled the radio may switch timeslot
 			dmrMonitorCapturedTS = trxGetDMRTimeSlot();
 			dmrMonitorCapturedTimeout = nonVolatileSettings.dmrCaptureTimeout * 1000;
 #ifdef THREE_STATE_SHUTDOWN
-			 slot_state = DMR_STATE_TX_END_3;
+			slot_state = DMR_STATE_TX_END_3_RMO;
 #else
 
-			if (trxDMRMode == DMR_MODE_PASSIVE)
+			if (trxDMRModeTx == DMR_MODE_RMO)
 			{
 				SPI0WritePageRegByte(0x04, 0x40, 0xC3);  //Enable DMR Tx and Rx, Passive Timing
 				SPI0WritePageRegByte(0x04, 0x41, 0x50);   //  Receive during Next Timeslot And Layer2 Access success Bit
-				slot_state = DMR_STATE_TX_END_3;
+				slot_state = DMR_STATE_TX_END_3_RMO;
 			}
 			else
 			{
 				init_digital_DMR_RX();
-				txstopdelay = 30;
-				slot_state = DMR_STATE_IDLE;
-				trxIsTransmitting = false;
+				slot_state = DMR_STATE_TX_END_3_DMO;
 			}
 #endif
 			break;
-		case DMR_STATE_TX_END_3:
+
+		case DMR_STATE_TX_END_3_DMO:
+			txstopdelay = 30;
+			slot_state = DMR_STATE_IDLE;
+			trxIsTransmitting = false;
+			break;
+
+		case DMR_STATE_TX_END_3_RMO:
 			skip_count=2;// Hold off displaying or opening the DMR squelch frames under some conditions
-			if (trxDMRMode == DMR_MODE_PASSIVE)
+			if (trxDMRModeTx == DMR_MODE_RMO)
 			{
-				GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+				LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
 				SPI0WritePageRegByte(0x04, 0x41, 0x50);   //  Receive during Next Timeslot And Layer2 Access success Bit
 				slot_state = DMR_STATE_RX_1;
 			}
 			else
 			{
-				GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+				LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 				slot_state = DMR_STATE_IDLE;
 			}
 			trxIsTransmitting = false;
 			break;
+
 		case DMR_STATE_REPEATER_WAKE_1:
 			{
-				GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 1);// Turn on the Red LED while when we transmit the wakeup frame
+				LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 1);// Turn on the Red LED while when we transmit the wakeup frame
 				uint8_t spi_tx1[] = { 0xB8, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 				spi_tx1[7] = (trxDMRID >> 16) & 0xFF;
 				spi_tx1[8] = (trxDMRID >> 8) & 0xFF;
@@ -1171,27 +1216,20 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 				SPI0WritePageRegByteArray(0x02, 0x00, spi_tx1, 0x0c);
 				SPI0WritePageRegByte(0x04, 0x50, 0x30);
 				SPI0WritePageRegByte(0x04, 0x41, 0x80);
+				trxIsTransmitting = true;
 			}
 			repeaterWakeupResponseTimeout = WAKEUP_RETRY_PERIOD;
-			slot_state = DMR_STATE_REPEATER_WAKE_3;
+			slot_state = DMR_STATE_REPEATER_WAKE_2;
 			break;
+
 		case DMR_STATE_REPEATER_WAKE_2:
-			/*
-			 *
-			// Note. I'm not sure if this state is really necessary, as it may be better simply to goto wakeup 3 and reset the C6000 TS system straight away.
-			 *
-			write_SPI_page_reg_byte_SPI0(0x04, 0x41, 0x50); // RX next slotenable
-			slot_state = DMR_STATE_REPEATER_WAKE_3;
-			GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);// Turn off the Green LED while we are waiting for the repeater to wakeup
-			break;
-			*/
-		case DMR_STATE_REPEATER_WAKE_3:
-			GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);// Turn off the Red LED while we are waiting for the repeater to wakeup
+			LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);// Turn off the Red LED while we are waiting for the repeater to wakeup
 			init_digital_DMR_RX();
 			rxcnt = 0;
-			slot_state = DMR_STATE_REPEATER_WAKE_4;
+			slot_state = DMR_STATE_REPEATER_WAKE_3;
 			break;
-		case DMR_STATE_REPEATER_WAKE_4:
+
+		case DMR_STATE_REPEATER_WAKE_3:
 			if (rxcnt > 3)
 			{
 				// wait for the signal from the repeater to have toggled timecode at least three times, i.e the signal should be stable and we should be able to go into Tx
@@ -1200,6 +1238,7 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 				isWaking = WAKING_MODE_NONE;
 			}
 			break;
+
 		default:
 			break;
 	}
@@ -1209,16 +1248,16 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 	{
 		tick_cnt++;
 		if ((slot_state == DMR_STATE_IDLE) && (tick_cnt > START_TICK_TIMEOUT))
-        {
+		{
 			init_digital_DMR_RX();
 			clearActiveDMRID();
 			disableAudioAmp(AUDIO_AMP_MODE_RF);
-			GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+			LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 			tick_cnt = 0;
-			menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+			uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 			slot_state = DMR_STATE_IDLE;
 			trxIsTransmitting = false;
-        }
+		}
 		else
 		{
 			if (((slot_state == DMR_STATE_RX_1) || (slot_state == DMR_STATE_RX_1)) && (tick_cnt > END_TICK_TIMEOUT))
@@ -1226,9 +1265,9 @@ inline static void HRC6000TimeslotInterruptHandler(void)
 				init_digital_DMR_RX();
 				clearActiveDMRID();
 				disableAudioAmp(AUDIO_AMP_MODE_RF);
-				GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+				LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 				tick_cnt = 0;
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				slot_state = DMR_STATE_IDLE;
 				trxIsTransmitting = false;
 			}
@@ -1274,24 +1313,33 @@ void init_digital_DMR_RX(void)
 	SPI0WritePageRegByte(0x04, 0x41, 0x50);  //Receive during next Timeslot
 }
 
-void init_digital(void)
+void reset_timeslot_detection(void)
 {
 	disableAudioAmp(AUDIO_AMP_MODE_RF);
-	GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+	LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 	timeCode = -1;// Clear current timecode synchronisation
 	tsLockCount = 0;
+	lastTimeCode = 0;
+	dmrMonitorCapturedTS = -1;
+	dmrMonitorCapturedTimeout = 0;
+}
+
+void init_digital(void)
+{
+	reset_timeslot_detection();
 	init_digital_DMR_RX();
 	init_digital_state();
 	NVIC_EnableIRQ(PORTC_IRQn);
+
 	codecInit();
 }
 
 void terminate_digital(void)
 {
 	disableAudioAmp(AUDIO_AMP_MODE_RF);
-    GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+	LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 	init_digital_state();
-    NVIC_DisableIRQ(PORTC_IRQn);
+	NVIC_DisableIRQ(PORTC_IRQn);
 }
 
 
@@ -1300,17 +1348,11 @@ void triggerQSOdataDisplay(void)
 {
 	// If this is the start of a newly received signal, we always need to trigger the display to show this, even if its the same station calling again.
 	// Of if the display is holding on the PC accept text and the incoming call is not a PC
-	if ((qsodata_timer == 0) || ((uiPrivateCallState == PRIVATE_CALL_ACCEPT) && (DMR_frame_buffer[0] == TG_CALL_FLAG)))
+	if ((qsodata_timer == 0) || ((uiDataGlobal.PrivateCall.state == PRIVATE_CALL_ACCEPT) && (DMR_frame_buffer[0] == TG_CALL_FLAG)))
 	{
-		menuDisplayQSODataState = QSO_DISPLAY_CALLER_DATA;
+		uiDataGlobal.displayQSOState = QSO_DISPLAY_CALLER_DATA;
 	}
-	/*
-	// check if this is a valid data frame, including Talker Alias data frames (0x04 - 0x07)
-	// Not sure if its necessary to check byte [1] for 0x00 but I'm doing this
-	if (DMR_frame_buffer[1] == 0x00  && (DMR_frame_buffer[0]==TG_CALL_FLAG || DMR_frame_buffer[0]==PC_CALL_FLAG  || (DMR_frame_buffer[0]>=0x04 && DMR_frame_buffer[0]<=0x07)))
-	{
-    	lastHeardListUpdate((uint8_t *)DMR_frame_buffer);
-	}*/
+
 	qsodata_timer = QSO_TIMER_TIMEOUT;
 }
 
@@ -1329,34 +1371,16 @@ void fw_hrc6000_task(void *data)
 {
 	while (1U)
 	{
-		taskENTER_CRITICAL();
-		uint32_t tmp_timer_hrc6000task = timer_hrc6000task;
-		taskEXIT_CRITICAL();
-		if (tmp_timer_hrc6000task == 0)
+		if (timer_hrc6000task == 0)
 		{
-			taskENTER_CRITICAL();
 			timer_hrc6000task = 10;
+			taskENTER_CRITICAL();
 			alive_hrc6000task = true;
 			taskEXIT_CRITICAL();
 
 			if (trxGetMode() == RADIO_MODE_DIGITAL)
 			{
 				tick_HR_C6000();
-			}
-			else
-			{
-				if (trxGetMode() == RADIO_MODE_ANALOG)
-				{
-					if (melody_play == NULL)
-					{
-						taskENTER_CRITICAL();
-						if (!trxTransmissionEnabled)
-						{
-							trxCheckAnalogSquelch();
-						}
-						taskEXIT_CRITICAL();
-					}
-				}
 			}
 		}
 
@@ -1404,10 +1428,11 @@ bool callAcceptFilter(void)
 }
 
 
+
 void tick_HR_C6000(void)
 {
 
-	if((nonVolatileSettings.dmrCcTsFilter & 0x01) == 0)
+	if((nonVolatileSettings.dmrCcTsFilter & DMR_CC_FILTER_PATTERN) == 0)
 	{
 		if(slot_state == DMR_STATE_IDLE)
 		{
@@ -1417,12 +1442,12 @@ void tick_HR_C6000(void)
 			}
 			else
 			{
-				ccHold=false;
+				ccHold = false;
 			}
 		}
 		else
 		{
-			ccHoldTimer=0;
+			ccHoldTimer = 0;
 		}
 	}
 
@@ -1441,7 +1466,7 @@ void tick_HR_C6000(void)
 			SPI0WritePageRegByte(0x04, 0x22, 0x86); // Start Vocoder Encode, I2S mode
 			NVIC_EnableIRQ(PORTC_IRQn);
 
-			if (trxDMRMode == DMR_MODE_ACTIVE)
+			if (trxDMRModeTx == DMR_MODE_DMO)
 			{
 				if (settingsUsbMode != USB_MODE_HOTSPOT)
 				{
@@ -1449,7 +1474,7 @@ void tick_HR_C6000(void)
 				}
 				else
 				{
-					// Note. We don't increment the buffer indexes, becuase this is also the first frame of audio and we need it later
+					// Note. We don't increment the buffer indexes, because this is also the first frame of audio and we need it later
 					NVIC_DisableIRQ(PORTC_IRQn);
 					SPI0WritePageRegByteArray(0x02, 0x00, (uint8_t *)&audioAndHotspotDataBuffer.hotspotBuffer[wavbuffer_read_idx], 0x0c);// put LC into hardware
 					NVIC_EnableIRQ(PORTC_IRQn);
@@ -1465,6 +1490,7 @@ void tick_HR_C6000(void)
 					codecInit();
 				}
 				isWaking = WAKING_MODE_WAITING;
+				wakeTriesCount = 0;
 				slot_state = DMR_STATE_REPEATER_WAKE_1;
 			}
 		}
@@ -1490,7 +1516,7 @@ void tick_HR_C6000(void)
 			{
 				init_digital();// sets 	int_timeout=0;
 				clearActiveDMRID();
-				menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+				uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				slot_state = DMR_STATE_IDLE;
 				trxIsTransmitting = false;
 			}
@@ -1511,15 +1537,22 @@ void tick_HR_C6000(void)
 			}
 			else
 			{
-				NVIC_DisableIRQ(PORTC_IRQn);
-				SPI0WritePageRegByte(0x04, 0x40, 0xE3); // TX and RX enable, Active Timing.
-				SPI0WritePageRegByte(0x04, 0x21, 0xA2); // Set Polite to Color Code and Reset vocoder encodingbuffer
-				SPI0WritePageRegByte(0x04, 0x22, 0x86); // Start Vocoder Encode, I2S mode
-				NVIC_EnableIRQ(PORTC_IRQn);
-				repeaterWakeupResponseTimeout = WAKEUP_RETRY_PERIOD;
-				slot_state = DMR_STATE_REPEATER_WAKE_1;
+				wakeTriesCount++;
+				if (wakeTriesCount > codeplugGetRepeaterWakeAttempts())
+				{
+					isWaking = WAKING_MODE_FAILED;// signal that the Wake process has failed.
+				}
+				else
+				{
+					NVIC_DisableIRQ(PORTC_IRQn);
+					SPI0WritePageRegByte(0x04, 0x40, 0xE3); // TX and RX enable, Active Timing.
+					SPI0WritePageRegByte(0x04, 0x21, 0xA2); // Set Polite to Color Code and Reset vocoder encodingbuffer
+					SPI0WritePageRegByte(0x04, 0x22, 0x86); // Start Vocoder Encode, I2S mode
+					NVIC_EnableIRQ(PORTC_IRQn);
+					repeaterWakeupResponseTimeout = WAKEUP_RETRY_PERIOD;
+					slot_state = DMR_STATE_REPEATER_WAKE_1;
+				}
 			}
-
 		}
 		else
 		{
@@ -1544,24 +1577,26 @@ void tick_HR_C6000(void)
 			}
 			else
 			{
-				// Once there are 6 buffers available they can be encoded into one DMR frame
+				// Once there are 2 buffers available they can be encoded into one AMBE block
 				// The will happen  prior to the data being needed in the TS ISR, so that by the time tick_codec_encode encodes complete,
 				// the data is ready to be used in the TS ISR
-				if ((wavbuffer_count >= 6) && (deferredBufferAvailable == false))
+				if (wavbuffer_count >= 2)
 				{
-					codecEncode((uint8_t *)deferredUpdateBuffer, 3);
-					deferredBufferAvailable = true;
+					codecEncodeBlock((uint8_t *)deferredUpdateBufferInPtr);
+
+					deferredUpdateBufferInPtr += LENGTH_AMBE_BLOCK;
+
+					if (deferredUpdateBufferInPtr > deferredUpdateBufferEnd)
+					{
+						deferredUpdateBufferInPtr = deferredUpdateBuffer;
+					}
+					ambeBufferCount++;
 				}
 			}
 		}
-
 	}
 	else
 	{
-		if (slot_state == DMR_STATE_IDLE)
-		{
-			trxCheckDigitalSquelch();
-		}
 		// receiving RF DMR
 		if (settingsUsbMode == USB_MODE_HOTSPOT)
 		{
@@ -1573,6 +1608,28 @@ void tick_HR_C6000(void)
 		}
 		else
 		{
+			if (monitorModeData.isEnabled && (monitorModeData.DMRTimeout > 0))
+			{
+				if (!rxCRCisValid)
+				{
+					monitorModeData.DMRTimeout--;
+					if (monitorModeData.DMRTimeout == 0)
+					{
+						// switch to analogue
+						trxSetModeAndBandwidth(RADIO_MODE_ANALOG, true);
+						currentChannelData->sql =  CODEPLUG_MIN_VARIABLE_SQUELCH;;
+						trxSetRxCSS(CODEPLUG_CSS_NONE);
+						headerRowIsDirty = true;
+					}
+				}
+				else
+				{
+					//found DMR signal
+					//SEGGER_RTT_printf(0, "%d\n",monitorModeData.DMRTimeout);
+					monitorModeData.DMRTimeout = 0;
+				}
+			}
+
 			// voice prompts take priority over incoming DMR audio
 			if (!voicePromptsIsPlaying() && hasEncodedAudio)
 			{
@@ -1586,28 +1643,19 @@ void tick_HR_C6000(void)
 		{
 			// Only timeout the QSO data display if not displaying the Private Call Accept Yes/No text
 			// if menuUtilityReceivedPcId is non zero the Private Call Accept text is being displayed
-			if (uiPrivateCallState != PRIVATE_CALL_ACCEPT)
+			if (uiDataGlobal.PrivateCall.state != PRIVATE_CALL_ACCEPT)
 			{
 				qsodata_timer--;
 
 				if (qsodata_timer == 0)
 				{
-					menuDisplayQSODataState = QSO_DISPLAY_DEFAULT_SCREEN;
+					uiDataGlobal.displayQSOState = QSO_DISPLAY_DEFAULT_SCREEN;
 				}
 			}
 		}
 	}
 
-	if (readDMRRSSI > 0)
-	{
-		readDMRRSSI--;
-		if (readDMRRSSI == 0)
-		{
-			trxReadRSSIAndNoise();
-		}
-	}
-
-	if (dmrMonitorCapturedTimeout > 0)
+	if ((dmrMonitorCapturedTS != -1) && (dmrMonitorCapturedTimeout > 0))
 	{
 		dmrMonitorCapturedTimeout--;
 		if (dmrMonitorCapturedTimeout == 0)
@@ -1615,6 +1663,8 @@ void tick_HR_C6000(void)
 			dmrMonitorCapturedTS = -1;// Reset the TS capture
 		}
 	}
+
+	rxCRCisValid = false;// Reset this
 }
 
 // RC. I had to use accessor functions for the isWaking flag

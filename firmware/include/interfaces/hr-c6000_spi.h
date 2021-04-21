@@ -16,12 +16,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_SPI_H_
-#define _FW_SPI_H_
+#ifndef _OPENGD77_SPI_H_
+#define _OPENGD77_SPI_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
-
+#include <FreeRTOS.h>
+#include <task.h>
 #include "fsl_dspi.h"
 
 #if defined(PLATFORM_GD77) || defined(PLATFORM_GD77S)
@@ -154,4 +153,4 @@ int SPI1ReadPageRegByteArray(uint8_t page, uint8_t reg, volatile uint8_t *values
 void SPI0Setup(void);
 void SPI1Setup(void);
 
-#endif /* _FW_SPI_H_ */
+#endif /* _OPENGD77_SPI_H_ */

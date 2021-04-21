@@ -12,7 +12,7 @@
 #include "usb_device_class.h"
 #include "usb_device_cdc_acm.h"
 
-#include "usb_device_descriptor.h"
+#include "usb/usb_device_descriptor.h"
 
 /*******************************************************************************
 * Variables

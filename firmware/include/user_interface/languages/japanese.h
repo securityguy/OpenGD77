@@ -190,13 +190,10 @@ const stringsTable_t japaneseLanguage =
 .please_confirm				= "¶¸ÆÝ¼Ã¸ÀÞ»²", // MaxLen: 15
 .vfo_freq_bind_mode			= "TRFÚÝÄÞ³",
 .overwrite_qm				= "¶·¶´OK?", //Maxlen: 14 chars
-.eco_level				= "´ºÚÍÞÙ",
-.buttons				= "ÎÞÀÝ",
+.eco_level				= "Eco Level",
+.buttons				= "Buttons",
 .leds					= "LEDs",
-.scan_dwell_time			= "Scan dwell",
-.battery_calibration			= "½·¬ÝÃ²¼¼Þ¶Ý",
-.low					= "Low",
-.high					= "High"
+.scan_dwell_time		= "Scan dwell"
 };
 /********************************************************************
  *

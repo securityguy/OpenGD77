@@ -17,8 +17,8 @@
  *   along with this program; if not, write to the Free Software
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef _DMR_QR1676_H_
-#define _DMR_QR1676_H_
+#ifndef _OPENGD77_QR1676_H_
+#define _OPENGD77_QR1676_H_
 
 
 void CQR1676_encode(unsigned char *data);

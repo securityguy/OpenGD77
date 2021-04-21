@@ -15,13 +15,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiLocalisation.h>
-#include <user_interface/uiUtilities.h>
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiLocalisation.h"
+#include "user_interface/uiUtilities.h"
 
-static void updateScreen(void);
+static void updateScreen(bool isFirstRun);
 static void handleEvent(uiEvent_t *ev);
-static void scrollDownOneLine(void);
 
 //#define CREDIT_TEXT_LENGTH 33
 #if defined(PLATFORM_RD5R)
@@ -29,59 +28,59 @@ static const int NUM_LINES_PER_SCREEN = 4;
 #else
 static const int NUM_LINES_PER_SCREEN = 6;
 #endif
-const int NUM_CREDITS = 7;
+
+static const int NUM_CREDITS = 7;
 static const char *creditTexts[] = {"Roger VK3KYY","Daniel F1RMB","Dzmitry EW1ADG","Colin G4EML","Alex DL4LEX","Kai DG4KLU","Jason VK7ZJA"};
-static int currentDisplayIndex = 0;
+
+static menuStatus_t menuCreditsExitCode = MENU_STATUS_SUCCESS;
 
 menuStatus_t menuCredits(uiEvent_t *ev, bool isFirstRun)
 {
 	if (isFirstRun)
 	{
-		gMenusCurrentItemIndex = 5000;
-
-		updateScreen();
+		menuDataGlobal.endIndex = ((NUM_CREDITS >= NUM_LINES_PER_SCREEN) ? (NUM_CREDITS - NUM_LINES_PER_SCREEN) : (NUM_LINES_PER_SCREEN - NUM_CREDITS));
+		updateScreen(true);
 	}
 	else
 	{
+		menuCreditsExitCode = MENU_STATUS_SUCCESS;
 		if (ev->hasEvent)
 		{
 			handleEvent(ev);
 		}
-/*
- * Uncomment to enable auto scrolling
-		if ((gMenusCurrentItemIndex--)==0)
-		{
-			scrollDownOneLine();
-			gMenusCurrentItemIndex=1000;
-		}
-*/
 	}
-	return MENU_STATUS_SUCCESS;
+	return menuCreditsExitCode;
 }
 
-static void updateScreen(void)
+static void updateScreen(bool isFirstRun)
 {
+
+	if (isFirstRun && (nonVolatileSettings.audioPromptMode >= AUDIO_PROMPT_MODE_VOICE_LEVEL_1))
+	{
+		if (voicePromptsIsPlaying())
+		{
+			voicePromptsTerminate();
+		}
+		voicePromptsInit();
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendLanguageString(&currentLanguage->credits);
+		voicePromptsAppendLanguageString(&currentLanguage->menu);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		voicePromptsAppendPrompt(PROMPT_SILENCE);
+		promptsPlayNotAfterTx();
+	}
+
 	ucClearBuf();
 	menuDisplayTitle(currentLanguage->credits);
 
+
 	for(int i = 0; i < NUM_LINES_PER_SCREEN; i++)
 	{
-		if ((i + currentDisplayIndex) < NUM_CREDITS)
-		{
-			ucPrintCentered(i * 8 + 16, (char *)creditTexts[i+currentDisplayIndex], FONT_SIZE_1);
-		}
+		ucPrintCentered(i * 8 + 16, (char *)creditTexts[i + menuDataGlobal.currentItemIndex], FONT_SIZE_1);
 	}
-	ucRender();
-	displayLightTrigger();
-}
 
-static void scrollDownOneLine(void)
-{
-	if (currentDisplayIndex < (NUM_CREDITS - NUM_LINES_PER_SCREEN))
-	{
-		currentDisplayIndex++;
-	}
-	updateScreen();
+	ucRender();
 }
 
 static void handleEvent(uiEvent_t *ev)
@@ -94,26 +93,33 @@ static void handleEvent(uiEvent_t *ev)
 		}
 	}
 
-	if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
+	if (KEYCHECK_SHORTUP(ev->keys, KEY_RED) || KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
 	{
 		menuSystemPopPreviousMenu();
 		return;
 	}
 	else if (KEYCHECK_PRESS(ev->keys, KEY_DOWN))
 	{
-		scrollDownOneLine();
+		if (menuDataGlobal.currentItemIndex < ((NUM_CREDITS >= NUM_LINES_PER_SCREEN) ? (NUM_CREDITS - NUM_LINES_PER_SCREEN) : (NUM_LINES_PER_SCREEN - NUM_CREDITS)))
+		{
+			menuDataGlobal.currentItemIndex++;
+		}
+
+		updateScreen(false);
 	}
 	else if (KEYCHECK_PRESS(ev->keys, KEY_UP))
 	{
-		if (currentDisplayIndex > 0)
+		if (menuDataGlobal.currentItemIndex > 0)
 		{
-			currentDisplayIndex--;
+			menuDataGlobal.currentItemIndex--;
 		}
 
-		updateScreen();
+		updateScreen(false);
 	}
-	else if (KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
+
+	if (KEYCHECK_SHORTUP_NUMBER(ev->keys)  && (BUTTONCHECK_DOWN(ev, BUTTON_SK2)))
 	{
-		menuSystemPopAllAndDisplayRootMenu();
+		saveQuickkeyMenuIndex(ev->keys.key, menuSystemGetCurrentMenuNumber(), 0, 0);
+		return;
 	}
 }

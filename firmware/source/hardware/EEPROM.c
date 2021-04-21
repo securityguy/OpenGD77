@@ -15,9 +15,9 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <EEPROM.h>
-#if defined(USE_SEGGER_RTT)
-#include <SeggerRTT/RTT/SEGGER_RTT.h>
+#include "hardware/EEPROM.h"
+#if defined(USING_EXTERNAL_DEBUGGER)
+#include "SeggerRTT/RTT/SEGGER_RTT.h"
 #endif
 
 const uint8_t EEPROM_ADDRESS 	= 0x50;
@@ -68,24 +68,23 @@ static bool _EEPROM_Write(int address, uint8_t *buf, int size)
 	const int COMMAND_SIZE = 2;
 	int transferSize;
 	uint8_t tmpBuf[COMMAND_SIZE];
-    i2c_master_transfer_t masterXfer;
-    status_t status;
+	i2c_master_transfer_t masterXfer;
+	status_t status;
 
-	taskENTER_CRITICAL();
-    if (isI2cInUse)
-    {
-#if defined(USE_SEGGER_RTT)
-    	SEGGER_RTT_printf(0, "Clash in EEPROM_Write (2) with %d\n",isI2cInUse);
+	if (isI2cInUse)
+	{
+#if defined(USING_EXTERNAL_DEBUGGER) && defined(DEBUG_I2C)
+		SEGGER_RTT_printf(0, "Clash in EEPROM_Write (2) with %d\n",isI2cInUse);
 #endif
-    	taskEXIT_CRITICAL();
-    	return false;
-    }
-    isI2cInUse = 1;
+		return false;
+	}
+	taskENTER_CRITICAL();
+	isI2cInUse = 1;
 
 
-    while(size > 0)
-    {
-		transferSize = size>EEPROM_PAGE_SIZE?EEPROM_PAGE_SIZE:size;
+	while(size > 0)
+	{
+		transferSize = (size > EEPROM_PAGE_SIZE) ? EEPROM_PAGE_SIZE : size;
 		tmpBuf[0] = address >> 8;
 		tmpBuf[1] = address & 0xff;
 
@@ -111,14 +110,14 @@ static bool _EEPROM_Write(int address, uint8_t *buf, int size)
 				vTaskDelay(portTICK_PERIOD_MS * 1);
 			}
 
-		status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
+			status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
 
 		} while((status != kStatus_Success) && (timeoutCount-- > 0));
 
 		if (status != kStatus_Success)
 		{
-	    	isI2cInUse = 0;
-	    	taskEXIT_CRITICAL();
+			isI2cInUse = 0;
+			taskEXIT_CRITICAL();
 			return false;
 		}
 
@@ -134,13 +133,13 @@ static bool _EEPROM_Write(int address, uint8_t *buf, int size)
 		status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
 		if (status != kStatus_Success)
 		{
-	    	isI2cInUse = 0;
-	    	taskEXIT_CRITICAL();
-			return status;
+			isI2cInUse = 0;
+			taskEXIT_CRITICAL();
+			return false;
 		}
 		address += transferSize;
 		size -= transferSize;
-    }
+	}
 
 	isI2cInUse = 0;
 	taskEXIT_CRITICAL();
@@ -152,33 +151,32 @@ bool EEPROM_Read(int address, uint8_t *buf, int size)
 {
 	const int COMMAND_SIZE = 2;
 	uint8_t tmpBuf[COMMAND_SIZE];
-    i2c_master_transfer_t masterXfer;
-    status_t status;
+	i2c_master_transfer_t masterXfer;
+	status_t status;
+
+
+	if (isI2cInUse)
+	{
+#if defined(USING_EXTERNAL_DEBUGGER) && defined(DEBUG_I2C)
+		SEGGER_RTT_printf(0, "Clash in EEPROM_Read (2) with %d\n",isI2cInUse);
+#endif
+		return false;
+	}
 
 	taskENTER_CRITICAL();
-    if (isI2cInUse)
-    {
-#if defined(USE_SEGGER_RTT)
-    	SEGGER_RTT_printf(0, "Clash in EEPROM_Read (2) with %d\n",isI2cInUse);
-#endif
-    	taskEXIT_CRITICAL();
-    	return false;
-    }
+	isI2cInUse = 2;
 
-    isI2cInUse = 2;
+	tmpBuf[0] = address >> 8;
+	tmpBuf[1] = address & 0xff;
 
-
-    tmpBuf[0] = address >> 8;
-    tmpBuf[1] = address & 0xff;
-
-    memset(&masterXfer, 0, sizeof(masterXfer));
-    masterXfer.slaveAddress = EEPROM_ADDRESS;
-    masterXfer.direction = kI2C_Write;
-    masterXfer.subaddress = 0;
-    masterXfer.subaddressSize = 0;
-    masterXfer.data = tmpBuf;
-    masterXfer.dataSize = COMMAND_SIZE;
-    masterXfer.flags = kI2C_TransferNoStopFlag;
+	memset(&masterXfer, 0, sizeof(masterXfer));
+	masterXfer.slaveAddress = EEPROM_ADDRESS;
+	masterXfer.direction = kI2C_Write;
+	masterXfer.subaddress = 0;
+	masterXfer.subaddressSize = 0;
+	masterXfer.data = tmpBuf;
+	masterXfer.dataSize = COMMAND_SIZE;
+	masterXfer.flags = kI2C_TransferNoStopFlag;
 
 	int timeoutCount = 50;
 	status = kStatus_Success;
@@ -189,33 +187,33 @@ bool EEPROM_Read(int address, uint8_t *buf, int size)
 			vTaskDelay(portTICK_PERIOD_MS * 1);
 		}
 
-	status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
+		status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
 
 	}while((status != kStatus_Success) && (timeoutCount-- > 0));
 
 	if (status != kStatus_Success)
 	{
-    	isI2cInUse = false;
-    	taskEXIT_CRITICAL();
+		isI2cInUse = 0;
+		taskEXIT_CRITICAL();
 		return false;
 	}
 
-    memset(&masterXfer, 0, sizeof(masterXfer));
-    masterXfer.slaveAddress = EEPROM_ADDRESS;
-    masterXfer.direction = kI2C_Read;
-    masterXfer.subaddress = 0;
-    masterXfer.subaddressSize = 0;
-    masterXfer.data = buf;
-    masterXfer.dataSize = size;
-    masterXfer.flags = kI2C_TransferRepeatedStartFlag;
+	memset(&masterXfer, 0, sizeof(masterXfer));
+	masterXfer.slaveAddress = EEPROM_ADDRESS;
+	masterXfer.direction = kI2C_Read;
+	masterXfer.subaddress = 0;
+	masterXfer.subaddressSize = 0;
+	masterXfer.data = buf;
+	masterXfer.dataSize = size;
+	masterXfer.flags = kI2C_TransferRepeatedStartFlag;
 
-    status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
-    if (status != kStatus_Success)
-    {
-    	isI2cInUse = false;
-    	taskEXIT_CRITICAL();
-    	return false;
-    }
+	status = I2C_MasterTransferBlocking(I2C0, &masterXfer);
+	if (status != kStatus_Success)
+	{
+		isI2cInUse = 0;
+		taskEXIT_CRITICAL();
+		return false;
+	}
 
 	isI2cInUse = false;
 	taskEXIT_CRITICAL();

@@ -19,10 +19,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <display.h>
-#include <hardware/UC1701.h>
-#include <settings.h>
-#include <gpio.h>
+#include "io/display.h"
+#include "hardware/UC1701.h"
+#include "functions/settings.h"
+#include "interfaces/gpio.h"
 
 /*
  * IMPORTANT
@@ -32,17 +32,23 @@
  * This file implements software SPI which is messed up if compiler optimisation is enabled.
  */
 
-void UC1701_setCommandMode(void);
-void UC1701_setDataMode(void);
-void UC1701_transfer(register uint8_t data1);
+
+
+
 
 #if ! defined(PLATFORM_GD77S)
-void UC1701_setCommandMode(void)
+static void UC1701_transfer(register uint8_t data1);
+static void UC1701_setCommandMode(void);
+static void UC1701_setDataMode(void);
+static bool isAwake = true;
+static bool isInverted = false;
+
+static void UC1701_setCommandMode(void)
 {
 	GPIO_Display_RS->PCOR = 1U << Pin_Display_RS;// set the command / data pin low to signify Command mode
 }
 
-void UC1701_setDataMode(void)
+static void UC1701_setDataMode(void)
 {
 	GPIO_Display_RS->PSOR = 1U << Pin_Display_RS;// set the command / data pin low to signify Data mode
 }
@@ -52,6 +58,8 @@ void ucRenderRows(int16_t startRow, int16_t endRow)
 {
 #if ! defined(PLATFORM_GD77S)
 	uint8_t *rowPos = (screenBuf + startRow * DISPLAY_SIZE_X);
+
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 0);// Enable CS
 
 	for(int16_t row = startRow; row < endRow; row++)
 	{
@@ -68,10 +76,9 @@ void ucRenderRows(int16_t startRow, int16_t endRow)
 		uint8_t data1;
 		for(int16_t line = 0; line < DISPLAY_SIZE_X; line++)
 		{
-			data1= *rowPos;
-			for (register int i=0; i<8; i++)
+			data1 = *rowPos;
+			for (register int i = 0; i < 8; i++)
 			{
-
 				GPIO_Display_SCK->PCOR = 1U << Pin_Display_SCK;
 
 				if ((data1 & 0x80) == 0U)
@@ -90,12 +97,14 @@ void ucRenderRows(int16_t startRow, int16_t endRow)
 			rowPos++;
 		}
 	}
+
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 1);// Disable CS
 #endif // ! PLATFORM_GD77S
 }
-
-void UC1701_transfer(register uint8_t data1)
-{
 #if ! defined(PLATFORM_GD77S)
+static void UC1701_transfer(register uint8_t data1)
+{
+
 	for (register int i = 0; i < 8; i++)
 	{
 		GPIO_Display_SCK->PCOR = 1U << Pin_Display_SCK;
@@ -112,12 +121,14 @@ void UC1701_transfer(register uint8_t data1)
 
 		data1 = data1 << 1;
 	}
-#endif // ! PLATFORM_GD77S
 }
+#endif // ! PLATFORM_GD77S
 
-void ucSetInverseVideo(bool isInverted)
+void ucSetInverseVideo(bool inverted)
 {
 #if ! defined(PLATFORM_GD77S)
+	isInverted = inverted;
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 0);// Enable CS
 	UC1701_setCommandMode();
 	if (isInverted)
 	{
@@ -130,13 +141,14 @@ void ucSetInverseVideo(bool isInverted)
 
     UC1701_transfer(0xAF); // Set Display Enable
     UC1701_setDataMode();
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 1);// Disable CS
 #endif // ! PLATFORM_GD77S
 }
 
 void ucBegin(bool isInverted)
 {
 #if ! defined(PLATFORM_GD77S)
-	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 0);// Enable CS permanently
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 0);// Enable CS
     // Set the LCD parameters...
 	UC1701_setCommandMode();
 	UC1701_transfer(0xE2); // System Reset
@@ -160,8 +172,8 @@ void ucBegin(bool isInverted)
 		UC1701_transfer(0xA4); // White background, black pixels
 	}
 
-    UC1701_setCommandMode();
     UC1701_transfer(0xAF); // Set Display Enable
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 1);// Disable CS
     ucClearBuf();
     ucRender();
 #endif // ! PLATFORM_GD77S
@@ -170,9 +182,53 @@ void ucBegin(bool isInverted)
 void ucSetContrast(uint8_t contrast)
 {
 #if ! defined(PLATFORM_GD77S)
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 0);// Enable CS
 	UC1701_setCommandMode();
 	UC1701_transfer(0x81);              // command to set contrast
 	UC1701_transfer(contrast);          // set contrast
 	UC1701_setDataMode();
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 1);// Disable CS
 #endif // ! PLATFORM_GD77S
+}
+
+
+// Note.
+// Entering "Sleep" mode makes the display go blank
+void ucSetDisplayPowerMode(bool wake)
+{
+#if ! defined(PLATFORM_GD77S)
+
+	if (isAwake == wake)
+	{
+		return;
+	}
+
+	isAwake = wake;
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 0);// Enable CS
+	UC1701_setCommandMode();
+
+	if (wake)
+	{
+		// enter normal display mode
+		if (isInverted)
+		{
+			UC1701_transfer(0xA7); // Black background, white pixels
+		}
+		else
+		{
+			UC1701_transfer(0xA4); // White background, black pixels
+		}
+		UC1701_transfer(0xAF); // White background, black pixels
+	}
+	else
+	{
+		// Enter sleep mode
+		UC1701_transfer(0xAE); // "Set Display OFF" (text from datasheet)
+		UC1701_transfer(0xA5); // "Set All-Pixel-ON" (text from datasheet)
+	}
+
+	UC1701_setDataMode();
+	GPIO_PinWrite(GPIO_Display_CS, Pin_Display_CS, 1);// Disable CS
+
+#endif
 }

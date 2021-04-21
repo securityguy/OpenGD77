@@ -16,11 +16,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_I2C_H_
-#define _FW_I2C_H_
+#ifndef _OPENGD77_I2C_H_
+#define _OPENGD77_I2C_H_
 
-#include "FreeRTOS.h"
-#include "task.h"
+#include <FreeRTOS.h>
+#include <task.h>
 #include "fsl_i2c.h"
 
 
@@ -99,8 +99,7 @@ extern volatile int isI2cInUse;
 
 void I2C0aInit(void);
 void I2C0bInit(void);
+void I2C0Setup(void);
 
-int I2CWriteReg2byte(uint8_t addr, uint8_t reg, uint8_t val1, uint8_t val2);
-int I2CReadReg2byte(uint8_t addr, uint8_t reg, uint8_t *val1, uint8_t *val2);
 
-#endif /* _FW_I2C_H_ */
+#endif /* _OPENGD77_I2C_H_ */

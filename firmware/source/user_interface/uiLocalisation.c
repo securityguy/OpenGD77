@@ -17,23 +17,27 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/uiLocalisation.h>
+#include "user_interface/uiLocalisation.h"
 
-#include <user_interface/languages/english.h>
-#include <user_interface/languages/french.h>
-#include <user_interface/languages/german.h>
-#include <user_interface/languages/portuguese.h>
-#include <user_interface/languages/catalan.h>
-#include <user_interface/languages/spanish.h>
-#include <user_interface/languages/italian.h>
-#include <user_interface/languages/danish.h>
-#include <user_interface/languages/finnish.h>
-#include <user_interface/languages/polish.h>
-#include <user_interface/languages/turkish.h>
-#include <user_interface/languages/czech.h>
-#include <user_interface/languages/dutch.h>
-#include <user_interface/languages/slovenian.h>
-#include <user_interface/languages/portugues_brazil.h>
+#include "user_interface/languages/english.h"
+#if defined(LANGUAGE_BUILD_JAPANESE)
+#include "user_interface/languages/japanese.h"
+#else
+#include "user_interface/languages/french.h"
+#include "user_interface/languages/german.h"
+#include "user_interface/languages/portuguese.h"
+#include "user_interface/languages/catalan.h"
+#include "user_interface/languages/spanish.h"
+#include "user_interface/languages/italian.h"
+#include "user_interface/languages/danish.h"
+#include "user_interface/languages/finnish.h"
+#include "user_interface/languages/polish.h"
+#include "user_interface/languages/turkish.h"
+#include "user_interface/languages/czech.h"
+#include "user_interface/languages/dutch.h"
+#include "user_interface/languages/slovenian.h"
+#include "user_interface/languages/portugues_brazil.h"
+#endif
 
 /*
  * Note.
@@ -43,19 +47,47 @@
  * Add new languages at the end of the list
  *
  */
-const stringsTable_t languages[NUM_LANGUAGES]= { 	englishLanguage,
-													catalanLanguage,
-													danishLanguage,
-													frenchLanguage,
-													germanLanguage,
-													italianLanguage,
-													portuguesLanguage,
-													spanishLanguage,
-													finnishLanguage,
-													polishLanguage,
-													turkishLanguage,
-													czechLanguage,
-													dutchLanguage,
-													slovenianLanguage,
-													portuguesBrazilLanguage};
+const stringsTable_t languages[NUM_LANGUAGES]= { 	englishLanguage,        // englishLanguageName
+#if defined(LANGUAGE_BUILD_JAPANESE)
+													japaneseLanguage,       // japaneseLanguageName
+#else
+													catalanLanguage,        // catalanLanguageName
+													danishLanguage,         // danishLanguageName
+													frenchLanguage,         // frenchLanguageName
+													germanLanguage,         // deutschGermanLanguageName
+													italianLanguage,        // italianLanguageName
+													portuguesLanguage,      // portuguesLanguageName
+													spanishLanguage,        // spanishLanguageName
+													finnishLanguage,        // suomiFinnishLanguageName
+													polishLanguage,         // polishLanguageName
+													turkishLanguage,        // turkishLanguageName
+													czechLanguage,          // czechLanguageName
+													dutchLanguage,          // nederlandsDutchLanguageName
+													slovenianLanguage,      // slovenianLanguageName
+													portuguesBrazilLanguage // portuguesBrazilLanguageName
+#endif
+													};
 const stringsTable_t *currentLanguage;
+
+// used in menuLanguage
+// needs to be sorted alphabetically, based on the text that is displayed for each language name. With English as the first / default language
+const int LANGUAGE_DISPLAY_ORDER[NUM_LANGUAGES] = {	englishLanguageName,
+#if defined(LANGUAGE_BUILD_JAPANESE)
+													japaneseLanguageName,
+#else
+													catalanLanguageName,
+													czechLanguageName,
+													danishLanguageName,
+													deutschGermanLanguageName,
+													frenchLanguageName,
+													italianLanguageName,
+													nederlandsDutchLanguageName,
+													polishLanguageName,
+													portuguesLanguageName,
+													portuguesBrazilLanguageName,
+													slovenianLanguageName,
+													spanishLanguageName,
+													suomiFinnishLanguageName,
+													turkishLanguageName
+#endif
+													};

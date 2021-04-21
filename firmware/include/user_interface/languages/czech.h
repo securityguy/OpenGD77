@@ -193,10 +193,7 @@ const stringsTable_t czechLanguage =
 .eco_level				= "Eco Level",
 .buttons				= "Buttons",
 .leds					= "LEDs",
-.scan_dwell_time			= "Scan dwell",
-.battery_calibration			= "Batt. Cal",
-.low					= "Low",
-.high					= "High"
+.scan_dwell_time		= "Scan dwell"
 };
 /********************************************************************
  *

@@ -16,13 +16,13 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_TRX_H_
-#define _FW_TRX_H_
+#ifndef _OPENGD77_TRX_H_
+#define _OPENGD77_TRX_H_
 
-#include "sound.h"
-#include "i2c.h"
-#include "calibration.h"
-#include "codeplug.h"
+#include "functions/sound.h"
+#include "interfaces/i2c.h"
+#include "functions/calibration.h"
+#include "functions/codeplug.h"
 
 typedef enum
 {
@@ -32,9 +32,15 @@ typedef enum
 	CSS_DCS_INVERTED
 } CSSTypes_t;
 
-typedef struct frequencyBand
+typedef struct
 {
 	int calTableMinFreq;
+	int minFreq;
+	int maxFreq;
+} frequencyHardwareBand_t;
+
+typedef struct
+{
 	int minFreq;
 	int maxFreq;
 } frequencyBand_t;
@@ -45,18 +51,15 @@ typedef struct trxFrequency
 	int txFreq;
 } trxFrequency_t;
 
-extern const int RADIO_VHF_MIN;
-extern const int RADIO_VHF_MAX;
-extern const int RADIO_UHF_MIN;
-extern const int RADIO_UHF_MAX;
-
 enum RADIO_MODE { RADIO_MODE_NONE, RADIO_MODE_ANALOG, RADIO_MODE_DIGITAL };
 enum DMR_ADMIT_CRITERIA { ADMIT_CRITERIA_ALWAYS, ADMIT_CRITERIA_CHANNEL_FREE, ADMIT_CRITERIA_COLOR_CODE };
-enum DMR_MODE { DMR_MODE_AUTO, DMR_MODE_ACTIVE, DMR_MODE_PASSIVE, DMR_MODE_SFR };
+enum DMR_MODE { DMR_MODE_AUTO, DMR_MODE_DMO, DMR_MODE_RMO, DMR_MODE_SFR };
 enum RADIO_FREQUENCY_BAND_NAMES { RADIO_BAND_VHF = 0, RADIO_BAND_220MHz, RADIO_BAND_UHF, RADIO_BANDS_TOTAL_NUM };
 enum TRX_FREQ_BAND { TRX_RX_FREQ_BAND = 0, TRX_TX_FREQ_BAND };
 
-extern const frequencyBand_t RADIO_FREQUENCY_BANDS[RADIO_BANDS_TOTAL_NUM];
+extern const frequencyHardwareBand_t 	RADIO_HARDWARE_FREQUENCY_BANDS[RADIO_BANDS_TOTAL_NUM];
+extern const frequencyBand_t			DEFAULT_USER_FREQUENCY_BANDS[RADIO_BANDS_TOTAL_NUM];
+extern frequencyBand_t					USER_FREQUENCY_BANDS[RADIO_BANDS_TOTAL_NUM];
 
 extern const uint8_t TRX_NUM_CTCSS;
 extern const uint16_t TRX_CTCSSTones[];
@@ -65,40 +68,42 @@ extern const uint16_t TRX_DCS_TONE;
 extern const uint8_t TRX_NUM_DCS;
 extern const uint16_t TRX_DCSCodes[];
 
-extern int trxDMRMode;
+extern int trxDMRModeRx;
+extern int trxDMRModeTx;
 
 extern volatile bool trxTransmissionEnabled;
 extern volatile bool trxIsTransmitting;
 extern uint32_t trxTalkGroupOrPcId;
 extern uint32_t trxDMRID;
-extern int trx_measure_count;
 extern int txstopdelay;
 extern volatile uint8_t trxRxSignal;
 extern volatile uint8_t trxRxNoise;
 extern volatile uint8_t trxTxVox;
 extern volatile uint8_t trxTxMic;
-extern volatile bool trxIsTransmittingTone;
 extern calibrationPowerValues_t trxPowerSettings;
 extern int trxCurrentBand[2];
+extern volatile bool txPAEnabled;
 
 void I2C_AT1846_set_register_with_mask(uint8_t reg, uint16_t mask, uint16_t value, uint8_t shift);
 
 bool trxCarrierDetected(void);
-void trxCheckDigitalSquelch(void);
-void trxCheckAnalogSquelch(void);
+bool trxCheckDigitalSquelch(void);
+bool trxCheckAnalogSquelch(void);
 int	trxGetMode(void);
 int	trxGetBandwidthIs25kHz(void);
 int	trxGetFrequency(void);
 void trxSetModeAndBandwidth(int mode, bool bandwidthIs25kHz);
 void trxSetFrequency(int fRx,int fTx, int dmrMode);
-void trx_setRX(void);
-void trx_setTX(void);
+void trxSetRX(void);
+void trxSetTX(void);
 void trxAT1846RxOff(void);
 void trxAT1846RxOn(void);
 void trxActivateRx(void);
 void trxActivateTx(void);
 void trxSetPowerFromLevel(int powerLevel);
-uint16_t trxGetPower(void);
+void trxUpdate_PA_DAC_Drive(void);
+uint16_t trxGetPA_DAC_Drive(void);
+int trxGetPowerLevel(void);
 void trxUpdateC6000Calibration(void);
 void trxUpdateAT1846SCalibration(void);
 void trxSetDMRColourCode(int colourCode);
@@ -120,11 +125,11 @@ void trxSetTone2(int toneFreq);
 void trxSetDTMF(int code);
 void trxUpdateTsForCurrentChannelWithSpecifiedContact(struct_codeplugContact_t *contactData);
 uint32_t trxDCSEncode(uint16_t dcsCode);
-void setMicGainFM(uint8_t gain);
+void trxSetMicGainFM(uint8_t gain);
 
-void enableTransmission(void);
-void disableTransmission(void);
+void trxEnableTransmission(void);
+void trxDisableTransmission(void);
+void trxPowerUpDownRxAndC6000(bool powerUp, bool includeC6000);
 uint8_t trxGetAnalogFilterLevel();
 void trxSetAnalogFilterLevel(uint8_t newFilterLevel);
-
-#endif /* _FW_TRX_H_ */
+#endif /* _OPENGD77_TRX_H_ */

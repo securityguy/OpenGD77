@@ -16,11 +16,11 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_DAC_H_
-#define _FW_DAC_H_
+#ifndef _OPENGD77_DAC_H_
+#define _OPENGD77_DAC_H_
 
 #include "fsl_dac.h"
 
 void dac_init(void);
 
-#endif /* _FW_DAC_H_ */
+#endif /* _OPENGD77_DAC_H_ */

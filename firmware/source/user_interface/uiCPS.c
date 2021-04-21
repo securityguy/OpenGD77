@@ -15,8 +15,8 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <trx.h>
-#include <user_interface/menuSystem.h>
+#include "functions/trx.h"
+#include "user_interface/menuSystem.h"
 
 static void handleTick(void);
 
@@ -39,6 +39,7 @@ menuStatus_t uiCPS(uiEvent_t *ev, bool isFirstRun)
 {
 	if (isFirstRun)
 	{
+		menuDataGlobal.endIndex = 0;
 		radioMode = trxGetMode();
 		radioBandWidth = trxGetBandwidthIs25kHz();
 		trxSetModeAndBandwidth(RADIO_MODE_NONE, radioBandWidth);
@@ -70,10 +71,10 @@ void uiCPSUpdate(uiCPSCommand_t command, int x, int y, ucFont_t fontSize, ucText
 			break;
 		case CPS2UI_COMMAND_RENDER_DISPLAY:
 			ucRender();
-			displayLightTrigger();
+			displayLightTrigger(true);
 			break;
 		case CPS2UI_COMMAND_BACKLIGHT:
-			displayLightTrigger();
+			displayLightTrigger(true);
 			break;
 		case CPS2UI_COMMAND_GREEN_LED:
 			mode = LED_GREEN;// flash green LED
@@ -82,10 +83,10 @@ void uiCPSUpdate(uiCPSCommand_t command, int x, int y, ucFont_t fontSize, ucText
 			mode = LED_RED;// flash red LED
 			break;
 		case CPS2UI_COMMAND_END:
-		    GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
-		    GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
+		    LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+		    LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
 		    mode = LED_NONE;
-		    trx_setRX();// Rx would be turned off at start of CPS by setting radio mode to none
+		    trxSetRX();// Rx would be turned off at start of CPS by setting radio mode to none
 		    trxSetModeAndBandwidth(radioMode, radioBandWidth);
 			menuSystemPopAllAndDisplayRootMenu();
 			break;
@@ -102,12 +103,12 @@ static void handleTick(void)
 			if (ledState == 0)
 			{
 				ledState = 1;
-			    GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
+			    LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 1);
 			}
 			else
 			{
 				ledState = 0;
-			    GPIO_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
+			    LEDs_PinWrite(GPIO_LEDgreen, Pin_LEDgreen, 0);
 			}
 			break;
 
@@ -115,12 +116,12 @@ static void handleTick(void)
 			if (ledState == 0)
 			{
 				ledState = 1;
-			    GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 1);
+			    LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 1);
 			}
 			else
 			{
 				ledState = 0;
-			    GPIO_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
+			    LEDs_PinWrite(GPIO_LEDred, Pin_LEDred, 0);
 			}
 			break;
 

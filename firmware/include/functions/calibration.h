@@ -16,10 +16,10 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#ifndef _FW_CALIBRATION_H_
-#define _FW_CALIBRATION_H_
+#ifndef _OPENGD77_CALIBRATION_H_
+#define _OPENGD77_CALIBRATION_H_
 
-#include "SPI_Flash.h"
+#include "hardware/SPI_Flash.h"
 
 typedef enum
 {
@@ -87,10 +87,13 @@ typedef struct deviationToneStruct
 	uint8_t dcs_narrow;
 } deviationToneStruct_t;
 
+extern const int MAX_PA_DAC_VALUE;
+
 
 bool calibrationInit(void);
 bool calibrationGetSectionData(CalibrationBand_t band, CalibrationSection_t section, CalibrationDataResult_t *o);
-bool calibrationGetPowerForFrequency(int freq, calibrationPowerValues_t *powerSettings);
+void calibrationGetPowerForFrequency(int freq, calibrationPowerValues_t *powerSettings);
 bool calibrationGetRSSIMeterParams(calibrationRSSIMeter_t *rssiMeterValues);
 bool calibrationCheckAndCopyToCommonLocation(bool forceReload);
+
 #endif

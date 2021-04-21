@@ -193,10 +193,7 @@ const stringsTable_t italianLanguage =
 .eco_level				= "Grado consumi",
 .buttons				= "Bottoni",
 .leds					= "LED",
-.scan_dwell_time			= "Ciclo SCAN",
-.battery_calibration			= "Batt. Cal",
-.low					= "Low",
-.high					= "High"
+.scan_dwell_time		= "Ciclo SCAN"
 };
 /********************************************************************
  *

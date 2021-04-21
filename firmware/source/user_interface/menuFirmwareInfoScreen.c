@@ -15,27 +15,30 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <user_interface/menuSystem.h>
-#include <user_interface/uiLocalisation.h>
-#include <user_interface/uiUtilities.h>
+#include "user_interface/menuSystem.h"
+#include "user_interface/uiLocalisation.h"
+#include "user_interface/uiUtilities.h"
 
 static void updateScreen(void);
 static void handleEvent(uiEvent_t *ev);
+static menuStatus_t menuFirmwareInfoExitCode = MENU_STATUS_SUCCESS;
 
 menuStatus_t menuFirmwareInfoScreen(uiEvent_t *ev, bool isFirstRun)
 {
 	if (isFirstRun)
 	{
+		menuDataGlobal.endIndex = 0;
 		updateScreen();
 	}
 	else
 	{
+		menuFirmwareInfoExitCode = MENU_STATUS_SUCCESS;
 		if (ev->hasEvent)
 		{
 			handleEvent(ev);
 		}
 	}
-	return MENU_STATUS_SUCCESS;
+	return menuFirmwareInfoExitCode;
 }
 
 static void updateScreen(void)
@@ -86,18 +89,15 @@ static void updateScreen(void)
 	voicePromptsAppendString(__DATE__);
 	voicePromptsAppendLanguageString(&currentLanguage->gitCommit);
 	voicePromptsAppendString(buf);
-	voicePromptsPlay();
+	promptsPlayNotAfterTx();
 
 	ucRender();
-	displayLightTrigger();
 #endif
 }
 
 
 static void handleEvent(uiEvent_t *ev)
 {
-	displayLightTrigger();
-
 	if (ev->events & BUTTON_EVENT)
 	{
 		if (repeatVoicePromptOnSK1(ev))
@@ -106,15 +106,15 @@ static void handleEvent(uiEvent_t *ev)
 		}
 	}
 
-	if (KEYCHECK_SHORTUP(ev->keys, KEY_RED))
+	if (KEYCHECK_SHORTUP(ev->keys, KEY_RED) || KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
 	{
 		menuSystemPopPreviousMenu();
 		return;
 	}
 
-	if (KEYCHECK_SHORTUP(ev->keys, KEY_GREEN))
+	if (KEYCHECK_SHORTUP_NUMBER(ev->keys)  && (BUTTONCHECK_DOWN(ev, BUTTON_SK2)))
 	{
-		menuSystemPopAllAndDisplayRootMenu();
+		saveQuickkeyMenuIndex(ev->keys.key, menuSystemGetCurrentMenuNumber(), 0, 0);
 		return;
 	}
 }

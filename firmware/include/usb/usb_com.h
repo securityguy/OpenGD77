@@ -16,13 +16,12 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_USB_COM_H_
-#define _FW_USB_COM_H_
+#ifndef _OPENGD77_USB_COM_H_
+#define _OPENGD77_USB_COM_H_
 
+#include <FreeRTOS.h>
+#include <task.h>
 #include "virtual_com.h"
-#include "FreeRTOS.h"
-#include "task.h"
-
 #include "main.h"
 
 
@@ -45,4 +44,4 @@ void add_to_commbuffer(uint8_t value);
 void USB_DEBUG_PRINT(char *str);
 void USB_DEBUG_printf(const char *format, ...);
 
-#endif /* _FW_USB_COM_H_ */
+#endif /* _OPENGD77_USB_COM_H_ */

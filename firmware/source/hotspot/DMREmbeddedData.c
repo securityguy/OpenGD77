@@ -16,13 +16,13 @@
  *   Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-//#include "DMREmbeddedData.h"
-#include <hotspot/CRC.h>
-#include <hotspot/dmrDefines.h>
-#include <hotspot/dmrUtils.h>
-#include <hotspot/DMRLC.h>
-#include <hotspot/Hamming.h>
 #include <string.h>
+//#include "hotspot/DMREmbeddedData.h"
+#include "hotspot/CRC.h"
+#include "hotspot/dmrDefines.h"
+#include "hotspot/dmrUtils.h"
+#include "hotspot/DMRLC.h"
+#include "hotspot/Hamming.h"
 
 enum LC_STATE
 {

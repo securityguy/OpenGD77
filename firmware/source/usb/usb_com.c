@@ -15,16 +15,16 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
-#include <hotspot/uiHotspot.h>
-#include <settings.h>
-#include <user_interface/uiUtilities.h>
-#include <user_interface/menuSystem.h>
 #include <stdarg.h>
-#include <usb_com.h>
-#include <ticks.h>
-#include <wdog.h>
-#include <HR-C6000.h>
-#include <sound.h>
+#include "hotspot/uiHotspot.h"
+#include "functions/settings.h"
+#include "user_interface/uiUtilities.h"
+#include "user_interface/menuSystem.h"
+#include "usb/usb_com.h"
+#include "functions/ticks.h"
+#include "interfaces/wdog.h"
+#include "hardware/HR-C6000.h"
+#include "functions/sound.h"
 
 static void handleCPSRequest(void);
 
@@ -37,6 +37,7 @@ __attribute__((section(".data.$RAM2"))) volatile uint8_t com_requestbuffer[COM_R
 __attribute__((section(".data.$RAM2"))) USB_DMA_NONINIT_DATA_ALIGN(USB_DATA_ALIGN_SIZE) uint8_t usbComSendBuf[COM_BUFFER_SIZE];//DATA_BUFF_SIZE
 int sector = -1;
 static bool flashingDMRIDs = false;
+static bool channelsRewritten = false;
 
 
 void tick_com_request(void)
@@ -179,9 +180,10 @@ static void cpsHandleWriteCommand(void)
 				// A better solution will be added to the CPS and firmware at a later date.
 				if ((sector * 4096) == VOICE_PROMPTS_FLASH_HEADER_ADDRESS)
 				{
-					nonVolatileSettings.audioPromptMode =	AUDIO_PROMPT_MODE_VOICE_LEVEL_1;
+					nonVolatileSettings.audioPromptMode = AUDIO_PROMPT_MODE_VOICE_LEVEL_1;
 				}
 #endif
+
 				taskEXIT_CRITICAL();
 				ok = SPI_Flash_eraseSector(sector * 4096);
 				taskENTER_CRITICAL();
@@ -206,12 +208,53 @@ static void cpsHandleWriteCommand(void)
 				uint32_t address = (com_requestbuffer[2] << 24) + (com_requestbuffer[3] << 16) + (com_requestbuffer[4] << 8) + (com_requestbuffer[5] << 0);
 				uint32_t length = (com_requestbuffer[6] << 8) + (com_requestbuffer[7] << 0);
 
+				// Channel is going to be rewritten, will need to reset current zone/etc...
+				if (address == CODEPLUG_ADDR_CHANNEL_HEADER_EEPROM)
+				{
+					channelsRewritten = true;
+				}
+
 				if (length > 32)
 				{
 					length = 32;
 				}
 
-				ok = EEPROM_Write(address, (uint8_t*)com_requestbuffer + 8, length);
+
+				// Temporary hack to prevent the QuickKeys getting overwritten by the codeplug
+				const int QUICKKEYS_BLOCK_END = (CODEPLUG_ADDR_QUICKKEYS + (CODEPLUG_QUICKKEYS_SIZE * sizeof(uint16_t)) - 1);
+				int end = (address + length) - 1;
+
+				if (((address >= CODEPLUG_ADDR_QUICKKEYS) && (address <= QUICKKEYS_BLOCK_END))
+						|| ((end >= CODEPLUG_ADDR_QUICKKEYS) && (end <= QUICKKEYS_BLOCK_END))
+						|| ((address < CODEPLUG_ADDR_QUICKKEYS) && (end > QUICKKEYS_BLOCK_END)))
+				{
+					if (address < CODEPLUG_ADDR_QUICKKEYS)
+					{
+						ok = EEPROM_Write(address, (uint8_t*)com_requestbuffer + 8, (CODEPLUG_ADDR_QUICKKEYS - address));
+
+						if (ok && (end > QUICKKEYS_BLOCK_END))
+						{
+							ok = EEPROM_Write((QUICKKEYS_BLOCK_END + 1), (uint8_t *)com_requestbuffer + 8 + ((QUICKKEYS_BLOCK_END + 1) - address),  (end - QUICKKEYS_BLOCK_END));
+						}
+
+					}
+					else
+					{
+						if ((address <= QUICKKEYS_BLOCK_END) && (end > QUICKKEYS_BLOCK_END))
+						{
+							ok = EEPROM_Write((QUICKKEYS_BLOCK_END + 1), (uint8_t *)com_requestbuffer + 8 + ((QUICKKEYS_BLOCK_END + 1) - address), (end - QUICKKEYS_BLOCK_END));
+						}
+						else
+						{
+							ok = true;
+						}
+					}
+					//	SEGGER_RTT_printf(0, "0x%06x\t0x%06x\n",address,end);
+				}
+				else
+				{
+					ok = EEPROM_Write(address, (uint8_t *)com_requestbuffer + 8, length);
+				}
 			}
 			break;
 		case CPS_ACCESS_WAV_BUFFER:// write to raw audio buffer
@@ -283,6 +326,42 @@ static void cpsHandleCommand(void)
 				switch(subCommand)
 				{
 					case 0:
+						// Channels has be rewritten, switch currentZone to All Channels
+						if (channelsRewritten)
+						{
+							uint16_t firstContact = 1;
+
+							//
+							// Give it a bit of time before reading the zone count as DM-1801 EEPROM looks slower
+							// than GD-77 to write
+							m = fw_millis();
+							while (1U)
+							{
+								if ((fw_millis() - m) > 50)
+								{
+									break;
+								}
+							}
+
+							codeplugAllChannelsInitCache(); // Rebuild channels cache
+							nonVolatileSettings.currentZone = (int16_t) (codeplugZonesGetCount() - 1); // Set to All Channels zone
+
+							// Search for the first assigned contact
+							for (uint16_t i = CODEPLUG_CHANNELS_MIN; i <= CODEPLUG_CHANNELS_MAX; i++)
+							{
+								if (codeplugAllChannelsIndexIsInUse(i))
+								{
+									firstContact = i;
+									break;
+								}
+
+								// Call tick_watchdog() ??
+							}
+
+							nonVolatileSettings.currentChannelIndexInAllZone = firstContact;
+							nonVolatileSettings.currentChannelIndexInZone = 0;
+						}
+
 						// save current settings and reboot
 						m = fw_millis();
 						settingsSaveSettings(false);// Need to save these channels prior to reboot, as reboot does not save

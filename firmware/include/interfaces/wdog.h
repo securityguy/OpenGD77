@@ -33,9 +33,8 @@ extern int batteryVoltage;
 extern float averageBatteryVoltage;
 extern bool headerRowIsDirty;
 
-void init_watchdog(batteryHistoryCallback_t cb);
-void fw_watchdog_task(void *data);
-void tick_watchdog(void);
+void watchdogInit(batteryHistoryCallback_t cb);
 void watchdogReboot(void);
+void watchdogDeinit(void);
 
 #endif /* _OPENGD77_WDOG_H_ */

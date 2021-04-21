@@ -18,7 +18,7 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#include <hotspot/dmrDefines.h>
+#include "hotspot/dmrDefines.h"
 
 const unsigned int DMR_FRAME_LENGTH_BITS  = 264U;
 

@@ -16,8 +16,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_KEYBOARD_H_
-#define _FW_KEYBOARD_H_
+#ifndef _OPENGD77_KEYBOARD_H_
+#define _OPENGD77_KEYBOARD_H_
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -91,6 +91,13 @@
 #define KEYCHECK_LONGDOWN(keys, k)        ((keys.key == k) && ((keys.event & (KEY_MOD_DOWN | KEY_MOD_LONG)) == (KEY_MOD_DOWN | KEY_MOD_LONG)))
 #define KEYCHECK_LONGDOWN_REPEAT(keys, k) ((keys.key == k) && ((keys.event & (KEY_MOD_PRESS | KEY_MOD_LONG)) == (KEY_MOD_PRESS | KEY_MOD_LONG)))
 
+#define KEYCHECK_SHORTUP_NUMBER(keys)      ((keys.key >='0' && keys.key <='9') && ((keys.event & (KEY_MOD_UP | KEY_MOD_LONG)) == KEY_MOD_UP))
+#define KEYCHECK_PRESS_NUMBER(keys)        ((keys.key >='0' && keys.key <='9') && ((keys.event & KEY_MOD_PRESS) == KEY_MOD_PRESS))
+#define KEYCHECK_LONGDOWN_NUMBER(keys)     ((keys.key >='0' && keys.key <='9') && ((keys.event & (KEY_MOD_DOWN | KEY_MOD_LONG)) == (KEY_MOD_DOWN | KEY_MOD_LONG)))
+
+
+
+
 
 //#define KEYCHAR(keys)              ((char)(keys & 0xff))
 
@@ -112,4 +119,4 @@ uint32_t keyboardRead(void);
 void keyboardCheckKeyEvent(keyboardCode_t *keys, int *event);
 bool heyboardScanKey(uint32_t scancode, char *keycode);
 
-#endif /* _FW_KEYBOARD_H_ */
+#endif /* _OPENGD77_KEYBOARD_H_ */

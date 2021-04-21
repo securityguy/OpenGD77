@@ -18,8 +18,8 @@
  * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
-#ifndef _FW_DISPLAY_H_
-#define _FW_DISPLAY_H_
+#ifndef _OPENGD77_DISPLAY_H_
+#define _OPENGD77_DISPLAY_H_
 
 #include <stdbool.h>
 
@@ -27,4 +27,4 @@ void displayInit(bool isInverseColour);
 void displayEnableBacklight(bool enable);
 bool displayIsBacklightLit(void);
 
-#endif /* _FW_DISPLAY_H_ */
+#endif /* _OPENGD77_DISPLAY_H_ */

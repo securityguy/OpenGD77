@@ -151,10 +151,12 @@ namespace GD77_FirmwareLoader
 			this.Controls.Add(this.btnDownload);
 			this.Controls.Add(this.btnOpenFile);
 			this.KeyPreview = true;
-			this.Name = "MainForm";
-			this.Text = "Open(GD77/GD77S/MD1801/RD5R) Firmware loader";
-			this.FormBorderStyle = FormBorderStyle.FixedSingle;
+			this.FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedSingle;
 			this.MaximizeBox = false;
+			this.MinimizeBox = false;
+			this.Name = "MainForm";
+			this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
+			this.Text = "Open(GD77/GD77S/MD1801/RD5R) Firmware loader";
 			this.ResumeLayout(false);
 		}
 
